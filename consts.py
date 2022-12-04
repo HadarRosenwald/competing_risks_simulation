@@ -9,5 +9,4 @@ y1_dist_param_default = {'a1': 0.0, 'b1': 4.0, 'c1': 10.0, 'sigma_11': 1, 'sigma
 treatment_prob_default = 0.5
 omega_default = 1.0
 beta_d_default = [-2.0, -2.0, 1.0]
-# population_size_default = 10000
-population_size_default = 1000
+population_size_default = 10000

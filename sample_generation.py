@@ -76,4 +76,11 @@ def create_sample(x_dist: Union[GaussianDist, UniformDist, float] = x_dist_defau
     variables_dict['sigma_0'] = y0_dist_param['sigma_01']
     variables_dict['sigma_1'] = y1_dist_param['sigma_11']
 
+    variables_dict['a0'] = y0_dist_param['a0']
+    variables_dict['b0'] = y0_dist_param['b0']
+    variables_dict['c0'] = y0_dist_param['c0']
+    variables_dict['a1'] = y1_dist_param['a1']
+    variables_dict['b1'] = y1_dist_param['b1']
+    variables_dict['c1'] = y1_dist_param['c1']
+
     return pd.DataFrame.from_dict(variables_dict)
