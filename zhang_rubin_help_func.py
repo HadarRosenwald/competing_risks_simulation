@@ -81,13 +81,17 @@ def calc_non_parametric_zhang_rubin(sample_df: pd.DataFrame,
 
 def pi_h_and_bounds_plots_controller(df: pd.DataFrame) -> None:
     df_for_analysis = df.sample(n=40, random_state=1).sort_values(by="x")
-    for i,row in df_for_analysis.iterrows():
-        print(f"x is: {round(row.x,2)}")
-        calc_non_parametric = not(i % 10)
+    for i, row in df_for_analysis.iterrows():
+        print(f"x is: {round(row.x, 2)}")
+        calc_non_parametric = not (i % 10)
         if calc_non_parametric:
             print("** including the non parametric bounds **")
-        calc_zhang_rubin_bounds_per_x(x=row.x, plot_and_print=True, mu_y_0_x=row.mu0, mu_y_1_x=row.mu1, sigma_0=row.sigma_0, sigma_1=row.sigma_1, a0=row.a0, b0=row.b0, c0=row.c0, a1=row.a1, b1=row.b1, c1=row.c1, beta_d=row.beta_d, calc_non_parametric=calc_non_parametric)
+        calc_zhang_rubin_bounds_per_x(x=row.x, plot_and_print=True, mu_y_0_x=row.mu0, mu_y_1_x=row.mu1,
+                                      sigma_0=row.sigma_0, sigma_1=row.sigma_1, a0=row.a0, b0=row.b0, c0=row.c0,
+                                      a1=row.a1, b1=row.b1, c1=row.c1, beta_d=row.beta_d,
+                                      calc_non_parametric=calc_non_parametric)
     # zr_as_cate_bound_for_given_x = calc_zhang_rubin_bounds_per_x(x=0.0065, plot_and_print=True, beta_d = [5.0, -10.0, 6.0])
+
 
 ################# plots ########################
 def plot_integrand_function(y_phi: Callable[[float], float], pi_h_step: float):
@@ -150,6 +154,7 @@ def plot_zhang_rubin_bounds(df: pd.DataFrame, zhang_rubin_bounds: List[Tuple[flo
     plt.show()
     return {'lb': lb, 'up': up, 'true value': mu_y_1_x - mu_y_0_x}
 
+
 ################# ndtri of mixture of gaussian ########################
 def continuous_bisect_fun_left(f, v, lo, hi):
     # Return the smallest value x between lo and hi such that f(x) >= v
@@ -203,6 +208,14 @@ def calculate_integral(func, lb_integration, ub_integration):
     return integral_result
 
 
+def cdf_s_normal(y: float) -> float:
+    return 1 / (sqrt(2 * pi)) * exp(-1 / 2 * pow(y, 2))
+
+
+def integrand_func(sigma: float, mu: float) -> Callable[[float, float], float]:
+    return lambda y: (y * sigma + mu) * cdf_s_normal(y)
+
+
 def calc_zhang_rubin_bounds_per_x(
         x: float, mu_y_0_x: float, mu_y_1_x: float, sigma_0: float, sigma_1: float,
         a0: float, b0: float, c0: float, a1: float, b1: float, c1: float,
@@ -223,8 +236,6 @@ def calc_zhang_rubin_bounds_per_x(
     # bounds
     zhang_rubin_lb_results = []
     zhang_rubin_ub_results = []
-    zhang_rubin_lb_non_parametric_results = []
-    zhang_rubin_ub_non_parametric_results = []
     for pi_h in pi_h_list:
         # Y1
         mu_1_as = a1 + b1 * x + c1
@@ -243,28 +254,26 @@ def calc_zhang_rubin_bounds_per_x(
         ndtri_1 = get_ndtri_of_mix(1, component_distributions, ps, weight)
 
         lb_frst_argmt_integral_p = calculate_integral(
-            func=lambda y: (y * sigma_1 + mu_1_p) * (1 / (sqrt(2 * pi)) * exp(-1 / 2 * pow(y, 2))),
+            func=integrand_func(sigma_1, mu_1_p),
             lb_integration=(ndtri_0 - mu_1_p) / sigma_1,
             ub_integration=(ndtri_1_minus_weight - mu_1_p) / sigma_1)
-
         lb_frst_argmt_integral_as = calculate_integral(
-            func=lambda y: (y * sigma_1 + mu_1_as) * (1 / (sqrt(2 * pi)) * exp(-1 / 2 * pow(y, 2))),
+            func=integrand_func(sigma_1, mu_1_as),
             lb_integration=(ndtri_0 - mu_1_as) / sigma_1,
             ub_integration=(ndtri_1_minus_weight - mu_1_as) / sigma_1)
 
-        lb_frst_argmt_integral = weight * lb_frst_argmt_integral_p + (1-weight) * lb_frst_argmt_integral_as
+        lb_frst_argmt_integral = weight * lb_frst_argmt_integral_p + (1 - weight) * lb_frst_argmt_integral_as
 
         ub_frst_argmt_integral_p = calculate_integral(
-            func=lambda y: (y * sigma_1 + mu_1_p) * (1 / (sqrt(2 * pi)) * exp(-1 / 2 * pow(y, 2))),
+            func=integrand_func(sigma_1, mu_1_p),
             lb_integration=(ndtri_weight - mu_1_p) / sigma_1,
             ub_integration=(ndtri_1 - mu_1_p) / sigma_1)
-
         ub_frst_argmt_integral_as = calculate_integral(
-            func=lambda y: (y * sigma_1 + mu_1_as) * (1 / (sqrt(2 * pi)) * exp(-1 / 2 * pow(y, 2))),
+            func=integrand_func(sigma_1, mu_1_as),
             lb_integration=(ndtri_weight - mu_1_as) / sigma_1,
             ub_integration=(ndtri_1 - mu_1_as) / sigma_1)
 
-        ub_frst_argmt_integral = weight * ub_frst_argmt_integral_p + (1-weight) * ub_frst_argmt_integral_as
+        ub_frst_argmt_integral = weight * ub_frst_argmt_integral_p + (1 - weight) * ub_frst_argmt_integral_as
 
         # Y0
         mu_0_as = a0 + b0 * x + c0
@@ -283,30 +292,26 @@ def calc_zhang_rubin_bounds_per_x(
         ndtri_1_minus_h_t1d0 = get_ndtri_of_mix(1 - pi_h / p_t1d0, component_distributions, ps, weight)
 
         lb_scnd_argmt_integral_h = calculate_integral(
-            func=lambda y: (y * sigma_0 + mu_0_h) * (1 / (sqrt(2 * pi)) * exp(-1 / 2 * pow(y, 2))),
+            func=integrand_func(sigma_0, mu_0_h),
             lb_integration=(ndtri_h_t1d0 - mu_0_h) / sigma_0,
             ub_integration=(ndtri_1 - mu_0_h) / sigma_0)
-
         lb_scnd_argmt_integral_as = calculate_integral(
-            func=lambda y: (y * sigma_0 + mu_0_as) * (1 / (sqrt(2 * pi)) * exp(-1 / 2 * pow(y, 2))),
+            func=integrand_func(sigma_0, mu_0_as),
             lb_integration=(ndtri_h_t1d0 - mu_0_as) / sigma_0,
             ub_integration=(ndtri_1 - mu_0_as) / sigma_0)
 
-        lb_scnd_argmt_integral = weight * lb_scnd_argmt_integral_h + (1-weight) * lb_scnd_argmt_integral_as
-
+        lb_scnd_argmt_integral = weight * lb_scnd_argmt_integral_h + (1 - weight) * lb_scnd_argmt_integral_as
 
         ub_scnd_argmt_integral_h = calculate_integral(
-            func=lambda y: (y * sigma_0 + mu_0_h) * (1 / (sqrt(2 * pi)) * exp(-1 / 2 * pow(y, 2))),
+            func=integrand_func(sigma_0, mu_0_h),
             lb_integration=(ndtri_0 - mu_0_h) / sigma_0,
             ub_integration=(ndtri_1_minus_h_t1d0 - mu_0_h) / sigma_0)
-
         ub_scnd_argmt_integral_as = calculate_integral(
-            func=lambda y: (y * sigma_0 + mu_0_as) * (1 / (sqrt(2 * pi)) * exp(-1 / 2 * pow(y, 2))),
+            func=integrand_func(sigma_0, mu_0_as),
             lb_integration=(ndtri_0 - mu_0_as) / sigma_0,
             ub_integration=(ndtri_1_minus_h_t1d0 - mu_0_as) / sigma_0)
 
-        ub_scnd_argmt_integral = weight * ub_scnd_argmt_integral_h + (1-weight) * ub_scnd_argmt_integral_as
-
+        ub_scnd_argmt_integral = weight * ub_scnd_argmt_integral_h + (1 - weight) * ub_scnd_argmt_integral_as
 
         zhang_rubin_lb = lb_frst_argmt_integral - lb_scnd_argmt_integral
         zhang_rubin_ub = ub_frst_argmt_integral - ub_scnd_argmt_integral
@@ -332,11 +337,14 @@ def calc_zhang_rubin_bounds_per_x(
 
     return (zhang_rubin_lb, zhang_rubin_ub)
 
+
 def calc_zhang_rubin_bounds(df: pd.DataFrame) -> List[Tuple[float, float]]:
     list_of_bounds = list()
     for index, row in df.iterrows():
-        if index%1000==0:
+        if index % 1000 == 0:
             print(f"row {index} out of {df.shape[0]}")
-        bound = calc_zhang_rubin_bounds_per_x(x=row.x, mu_y_0_x=row.mu0, mu_y_1_x=row.mu1, sigma_0=row.sigma_0, sigma_1=row.sigma_1,  a0=row.a0, b0=row.b0, c0=row.c0, a1=row.a1, b1=row.b1, c1=row.c1, beta_d=row.beta_d, pi_h_step=0.01)
+        bound = calc_zhang_rubin_bounds_per_x(x=row.x, mu_y_0_x=row.mu0, mu_y_1_x=row.mu1, sigma_0=row.sigma_0,
+                                              sigma_1=row.sigma_1, a0=row.a0, b0=row.b0, c0=row.c0, a1=row.a1,
+                                              b1=row.b1, c1=row.c1, beta_d=row.beta_d, pi_h_step=0.01)
         list_of_bounds.append(bound)
     return list_of_bounds
