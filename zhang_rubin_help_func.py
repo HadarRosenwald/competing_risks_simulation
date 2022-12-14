@@ -1,12 +1,18 @@
-from typing import List, Tuple, Callable
+from math import exp, sqrt, pi, pow
+from typing import Callable
+from typing import Dict, List, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from numpy import random
 from scipy import integrate
+from scipy import stats
 
 from consts import default_random_seed
+from consts import y1_dist_param_default, y0_dist_param_default
+from sample_generation import create_sample
+from strata import Strata
 
 random.seed(default_random_seed)
 
@@ -73,6 +79,16 @@ def calc_non_parametric_zhang_rubin(sample_df: pd.DataFrame,
     return (zhang_rubin_lb, zhang_rubin_ub)
 
 
+def pi_h_and_bounds_plots_controller(df: pd.DataFrame) -> None:
+    df_for_analysis = df.sample(n=40, random_state=1).sort_values(by="x")
+    for i,row in df_for_analysis.iterrows():
+        print(f"x is: {round(row.x,2)}")
+        calc_non_parametric = not(i % 10)
+        if calc_non_parametric:
+            print("** including the non parametric bounds **")
+        calc_zhang_rubin_bounds_per_x(x=row.x, plot_and_print=True, mu_y_0_x=row.mu0, mu_y_1_x=row.mu1, sigma_0=row.sigma_0, sigma_1=row.sigma_1, a0=row.a0, b0=row.b0, c0=row.c0, a1=row.a1, b1=row.b1, c1=row.c1, beta_d=row.beta_d, calc_non_parametric=calc_non_parametric)
+    # zr_as_cate_bound_for_given_x = calc_zhang_rubin_bounds_per_x(x=0.0065, plot_and_print=True, beta_d = [5.0, -10.0, 6.0])
+
 ################# plots ########################
 def plot_integrand_function(y_phi: Callable[[float], float], pi_h_step: float):
     min_y_phi, max_y_phi = -7.5, 7.5
@@ -109,6 +125,30 @@ def plot_pi_h_and_bounds(pi_h: List[float], zhang_rubin_lb: List[float], zhang_r
     plt.ylabel(r'Zhang & Rubin Bounds')
     plt.show()
 
+
+def plot_zhang_rubin_bounds(df: pd.DataFrame, zhang_rubin_bounds: List[Tuple[float, float]],
+                            y0_dist_param: Dict[str, float] = y0_dist_param_default,
+                            y1_dist_param: Dict[str, float] = y1_dist_param_default):
+    df_plot_as = df.loc[df.stratum == Strata.AS.name]
+    plt.scatter(df_plot_as.x, (df_plot_as.Y1 - df_plot_as.Y0), label="True Y1 - Y0|AS", s=0.1)
+
+    mu_y_0_x = df.mu0
+    mu_y_1_x = df.mu1
+
+    lb, up = zip(*zhang_rubin_bounds)
+    print(f"lower bound: {lb}, upper bound: {up}, true value: {mu_y_1_x - mu_y_0_x}")
+    plt.scatter(list(df.x), lb, label="Lower bound", s=0.1)
+    plt.scatter(list(df.x), up, label="Upper bound", s=0.1)
+    plt.scatter(list(df.x), mu_y_1_x - mu_y_0_x, label=r'$\mu_{y(1)|x}-\mu_{y(0)|x}$', s=0.1)
+
+    plt.legend(markerscale=12)
+    # plt.legend()
+    plt.title("Bounding Y1-Y0|AS by Zhang and Rubin")
+    plt.xlabel('X')
+    plt.ylabel('Y1-Y0|AS bounds')
+    plt.ylim((min(-3, min(lb)), max(3, max(up))))
+    plt.show()
+    return {'lb': lb, 'up': up, 'true value': mu_y_1_x - mu_y_0_x}
 
 ################# ndtri of mixture of gaussian ########################
 def continuous_bisect_fun_left(f, v, lo, hi):
@@ -169,3 +209,119 @@ def calculate_integral_bounds(component_distributions, weight, ps, alpha_list, m
             ndtri_mix = get_ndtri_of_mix(alpha, component_distributions, ps, weight)
         argmt_integral_list.append((ndtri_mix - mu) / sigma)
     return argmt_integral_list
+
+
+def calc_zhang_rubin_bounds_per_x(
+        x: float, mu_y_0_x: float, mu_y_1_x: float, sigma_0: float, sigma_1: float,
+        a0: float, b0: float, c0: float, a1: float, b1: float, c1: float,
+        beta_d: List[float], plot_and_print: bool = False, pi_h_step: float = 0.001,
+        calc_non_parametric=False) -> Tuple[float, float]:
+    beta_d0, beta_d1, beta_d2 = beta_d
+    # print(f"mu0: {mu_y_0_x}, mu1: {mu_y_1_x}, sigma0: {sigma_0}, sigma1: {sigma_1}, beta: {beta_d}")
+
+    # pi
+    p_t0d0 = 1 - 1 / (1 + exp(-beta_d0 - beta_d2 * x))
+    p_t1d0 = 1 - 1 / (1 + exp(-beta_d0 - beta_d1 - beta_d2 * x))
+    lower_pi = max(0, p_t0d0 - p_t1d0)
+    upper_pi = min(p_t0d0, 1 - p_t1d0)
+    pi_h_list = np.arange(lower_pi, upper_pi + pi_h_step, pi_h_step)
+    if plot_and_print:
+        plot_pi_h(lower_pi, upper_pi)
+
+    # bounds
+    zhang_rubin_lb_results = []
+    zhang_rubin_ub_results = []
+    zhang_rubin_lb_non_parametric_results = []
+    zhang_rubin_ub_non_parametric_results = []
+    for pi_h in pi_h_list:
+        # integrals = {
+        # 'lb_frst_argmt_integral': {'lb': (special.ndtri(0)-mu_y_1_x)/sigma_1, 'ub': (special.ndtri(p_t0d0/p_t1d0-pi_h/p_t1d0)-mu_y_1_x)/sigma_1, 'mu':mu_y_1_x , 'sigma':sigma_1},
+        # 'lb_scnd_argmt_integral': {'lb': (special.ndtri(pi_h/p_t1d0)-mu_y_0_x)/sigma_0, 'ub': (special.ndtri(1)-mu_y_0_x)/sigma_0, 'mu':mu_y_0_x , 'sigma':sigma_0}, #for pi_h=0, this is integral from phi(one) to phi(one)-> from inf to inf, returns nan
+        # 'ub_frst_argmt_integral': {'lb': (special.ndtri(1-p_t0d0/p_t1d0+pi_h/p_t1d0)-mu_y_1_x)/sigma_1,'ub': (special.ndtri(1)-mu_y_1_x)/sigma_1, 'mu':mu_y_1_x , 'sigma':sigma_1},
+        # 'ub_scnd_argmt_integral': {'lb': (special.ndtri(0)-mu_y_0_x)/sigma_0,'ub': (special.ndtri(1-pi_h/p_t1d0)-mu_y_0_x)/sigma_0, 'mu':mu_y_0_x , 'sigma':sigma_0}
+        # }
+
+        # Y1
+        mu_1_as = a1 + b1 * x + c1
+        mu_1_p = a1 + b1 * x
+        # QUESTION: Where do we account for the fact that this x resulted in EITHER AS or P? we don't have another x like this with the opposite strata. We are taking weighted average but where does the probability of being AS/P - in terms of Beta - is addressed?
+
+        f1 = stats.norm(loc=mu_1_as, scale=sigma_1)
+        f2 = stats.norm(loc=mu_1_p, scale=sigma_1)
+        component_distributions = [f1, f2]
+        weight = p_t0d0 / p_t1d0 - pi_h / p_t1d0
+        ps = [weight, 1 - weight]
+        alpha_list = [0, p_t0d0 / p_t1d0 - pi_h / p_t1d0, 1 - p_t0d0 / p_t1d0 + pi_h / p_t1d0, 1]
+
+        frst_argmt_integral_list = calculate_integral_bounds(component_distributions, weight, ps, alpha_list, mu_y_1_x,
+                                                             sigma_1)
+        lb_frst_argmt_integral_lb, lb_frst_argmt_integral_ub, ub_frst_argmt_integral_lb, ub_frst_argmt_integral_ub = frst_argmt_integral_list
+
+        # Y0
+        mu_0_as = a0 + b0 * x + c0
+        mu_0_h = a0 + b0 * x
+        # QUESTION: Where do we account for the fact that this x resulted in EITHER AS or P? we don't have another x like this with the opposite strata. We are taking weighted average but where does the probability of being AS/P - in terms of Beta - is addressed?
+
+        f1 = stats.norm(loc=mu_0_as, scale=sigma_0)
+        f2 = stats.norm(loc=mu_0_h, scale=sigma_0)
+        component_distributions = [f1, f2]
+        weight = p_t0d0 - pi_h / p_t0d0
+        ps = [weight, 1 - weight]
+        alpha_list = [pi_h / p_t1d0, 1, 0, 1 - pi_h / p_t1d0]
+
+        scnd_argmt_integral_list = calculate_integral_bounds(component_distributions, weight, ps, alpha_list, mu_y_0_x,
+                                                             sigma_0)
+        lb_scnd_argmt_integral_lb, lb_scnd_argmt_integral_ub, ub_scnd_argmt_integral_lb, ub_scnd_argmt_integral_ub = scnd_argmt_integral_list
+
+        integrals = {
+            'lb_frst_argmt_integral': {'lb': lb_frst_argmt_integral_lb, 'ub': lb_frst_argmt_integral_ub, 'mu': mu_y_1_x,
+                                       'sigma': sigma_1},
+            'lb_scnd_argmt_integral': {'lb': lb_scnd_argmt_integral_lb, 'ub': lb_scnd_argmt_integral_ub, 'mu': mu_y_0_x,
+                                       'sigma': sigma_0},
+            'ub_frst_argmt_integral': {'lb': ub_frst_argmt_integral_lb, 'ub': ub_frst_argmt_integral_ub, 'mu': mu_y_1_x,
+                                       'sigma': sigma_1},
+            'ub_scnd_argmt_integral': {'lb': ub_scnd_argmt_integral_lb, 'ub': ub_scnd_argmt_integral_ub, 'mu': mu_y_0_x,
+                                       'sigma': sigma_0}
+        }
+
+        for k in integrals.keys():
+            lb = integrals[k]['lb']
+            ub = integrals[k]['ub']
+            integrals[k]['result'] = calculate_integral(
+                lambda y: (y * integrals[k]['sigma'] + integrals[k]['mu']) * 1 / (sqrt(2 * pi)) * exp(
+                    -1 / 2 * pow(y, 2)), lb, ub)  # if lb!=ub else 0
+
+        zhang_rubin_lb = integrals['lb_frst_argmt_integral']['result'] - integrals['lb_scnd_argmt_integral']['result']
+        zhang_rubin_ub = integrals['ub_frst_argmt_integral']['result'] - integrals['ub_scnd_argmt_integral']['result']
+        if plot_and_print:
+            print(f"""pi_h {round(pi_h, 3)}:
+            LB: 1st intagral: {round(integrals['lb_frst_argmt_integral']['lb'], 2)} to {round(integrals['lb_frst_argmt_integral']['ub'], 2)}. 2nd intagral: {integrals['lb_scnd_argmt_integral']['lb']} to {round(integrals['lb_scnd_argmt_integral']['ub'], 2)}.
+            UB: 1st intagral: {round(integrals['ub_frst_argmt_integral']['lb'], 2)} to {round(integrals['ub_frst_argmt_integral']['ub'], 2)}. 2nd intagral: {integrals['ub_scnd_argmt_integral']['lb']} to {round(integrals['ub_scnd_argmt_integral']['ub'], 2)}. 
+            Zhang and Rubin bounds are [{zhang_rubin_lb}, {zhang_rubin_ub}]
+            """)
+        zhang_rubin_lb_results.append(zhang_rubin_lb)
+        zhang_rubin_ub_results.append(zhang_rubin_ub)
+
+    zhang_rubin_lb = np.nanmin(zhang_rubin_lb_results)
+    zhang_rubin_ub = np.nanmax(zhang_rubin_ub_results)
+
+    if plot_and_print:
+        print(f"mu_y_1_x-mu_y_0_x: {mu_y_1_x - mu_y_0_x}")
+        print(f"Zhang and Rubins bounds: [{zhang_rubin_lb}, {zhang_rubin_ub}]")
+        if calc_non_parametric:
+            zhang_rubin_lb_non_parametric, zhang_rubin_ub_non_parametric = calc_non_parametric_zhang_rubin(
+                create_sample(x_dist=x))
+            print(
+                f"Zhang and Rubins non parametric bounds: [{zhang_rubin_lb_non_parametric}, {zhang_rubin_ub_non_parametric}]")
+        plot_pi_h_and_bounds(pi_h_list, zhang_rubin_lb_results, zhang_rubin_ub_results)
+
+    return (zhang_rubin_lb, zhang_rubin_ub)
+
+def calc_zhang_rubin_bounds(df: pd.DataFrame) -> List[Tuple[float, float]]:
+    list_of_bounds = list()
+    for index, row in df.iterrows():
+        if index%10000==0:
+            print(f"row {index} out of {df.shape[0]}")
+        bound = calc_zhang_rubin_bounds_per_x(x=row.x, mu_y_0_x=row.mu0, mu_y_1_x=row.mu1, sigma_0=row.sigma_0, sigma_1=row.sigma_1,  a0=row.a0, b0=row.b0, c0=row.c0, a1=row.a1, b1=row.b1, c1=row.c1, beta_d=row.beta_d, pi_h_step=0.01)
+        list_of_bounds.append(bound)
+    return list_of_bounds
