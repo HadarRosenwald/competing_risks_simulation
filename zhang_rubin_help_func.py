@@ -187,28 +187,20 @@ def cdf_of_mixture_of_quantile(f1, f2, quantile, weight):
 
 
 def get_ndtri_of_mix(alpha, component_distributions, ps, weight):
-    quantile = mixture_quantile(alpha, component_distributions, ps)
-    ndtri_mix = cdf_of_mixture_of_quantile(component_distributions[0], component_distributions[0], quantile, weight)
+    if alpha == 0:
+        ndtri_mix = 0.0  # alpha=0 -> quantile=-inf -> ndtri=0
+    elif alpha == 1:
+        ndtri_mix = 1.0  # alpha=1 -> quantile=inf -> ndtri=1
+    else:
+        quantile = mixture_quantile(alpha, component_distributions, ps)
+        ndtri_mix = cdf_of_mixture_of_quantile(component_distributions[0], component_distributions[0], quantile, weight)
     return ndtri_mix
 
 
 ################# zhang and rubin parametric bounds ########################
-def calculate_integral(func, lower_limit_integration, upper_limit_integration):
-    integral_result, estimate_absolute_error = integrate.quad(func, lower_limit_integration, upper_limit_integration)
+def calculate_integral(func, lb_integration, ub_integration):
+    integral_result, estimate_absolute_error = integrate.quad(func, lb_integration, ub_integration)
     return integral_result
-
-
-def calculate_integral_bounds(component_distributions, weight, ps, alpha_list, mu, sigma):
-    argmt_integral_list = []
-    for alpha in alpha_list:
-        if alpha == 0:
-            ndtri_mix = 0.0  # alpha=0 -> quantile=-inf -> ndtri=0
-        elif alpha == 1:
-            ndtri_mix = 1.0  # alpha=1 -> quantile=inf -> ndtri=1
-        else:
-            ndtri_mix = get_ndtri_of_mix(alpha, component_distributions, ps, weight)
-        argmt_integral_list.append((ndtri_mix - mu) / sigma)
-    return argmt_integral_list
 
 
 def calc_zhang_rubin_bounds_per_x(
@@ -234,69 +226,92 @@ def calc_zhang_rubin_bounds_per_x(
     zhang_rubin_lb_non_parametric_results = []
     zhang_rubin_ub_non_parametric_results = []
     for pi_h in pi_h_list:
-        # integrals = {
-        # 'lb_frst_argmt_integral': {'lb': (special.ndtri(0)-mu_y_1_x)/sigma_1, 'ub': (special.ndtri(p_t0d0/p_t1d0-pi_h/p_t1d0)-mu_y_1_x)/sigma_1, 'mu':mu_y_1_x , 'sigma':sigma_1},
-        # 'lb_scnd_argmt_integral': {'lb': (special.ndtri(pi_h/p_t1d0)-mu_y_0_x)/sigma_0, 'ub': (special.ndtri(1)-mu_y_0_x)/sigma_0, 'mu':mu_y_0_x , 'sigma':sigma_0}, #for pi_h=0, this is integral from phi(one) to phi(one)-> from inf to inf, returns nan
-        # 'ub_frst_argmt_integral': {'lb': (special.ndtri(1-p_t0d0/p_t1d0+pi_h/p_t1d0)-mu_y_1_x)/sigma_1,'ub': (special.ndtri(1)-mu_y_1_x)/sigma_1, 'mu':mu_y_1_x , 'sigma':sigma_1},
-        # 'ub_scnd_argmt_integral': {'lb': (special.ndtri(0)-mu_y_0_x)/sigma_0,'ub': (special.ndtri(1-pi_h/p_t1d0)-mu_y_0_x)/sigma_0, 'mu':mu_y_0_x , 'sigma':sigma_0}
-        # }
-
         # Y1
         mu_1_as = a1 + b1 * x + c1
         mu_1_p = a1 + b1 * x
         # QUESTION: Where do we account for the fact that this x resulted in EITHER AS or P? we don't have another x like this with the opposite strata. We are taking weighted average but where does the probability of being AS/P - in terms of Beta - is addressed?
 
-        f1 = stats.norm(loc=mu_1_as, scale=sigma_1)
-        f2 = stats.norm(loc=mu_1_p, scale=sigma_1)
+        weight = 1 - p_t0d0 / p_t1d0 + pi_h / p_t1d0
+        f1 = stats.norm(loc=mu_1_p, scale=sigma_1)
+        f2 = stats.norm(loc=mu_1_as, scale=sigma_1)
         component_distributions = [f1, f2]
-        weight = p_t0d0 / p_t1d0 - pi_h / p_t1d0
         ps = [weight, 1 - weight]
-        alpha_list = [0, p_t0d0 / p_t1d0 - pi_h / p_t1d0, 1 - p_t0d0 / p_t1d0 + pi_h / p_t1d0, 1]
 
-        frst_argmt_integral_list = calculate_integral_bounds(component_distributions, weight, ps, alpha_list, mu_y_1_x,
-                                                             sigma_1)
-        lb_frst_argmt_integral_lb, lb_frst_argmt_integral_ub, ub_frst_argmt_integral_lb, ub_frst_argmt_integral_ub = frst_argmt_integral_list
+        ndtri_0 = get_ndtri_of_mix(0, component_distributions, ps, weight)
+        ndtri_1_minus_weight = get_ndtri_of_mix(1 - weight, component_distributions, ps, weight)
+        ndtri_weight = get_ndtri_of_mix(weight, component_distributions, ps, weight)
+        ndtri_1 = get_ndtri_of_mix(1, component_distributions, ps, weight)
+
+        lb_frst_argmt_integral_p = calculate_integral(
+            func=lambda y: (y * sigma_1 + mu_1_p) * (1 / (sqrt(2 * pi)) * exp(-1 / 2 * pow(y, 2))),
+            lb_integration=(ndtri_0 - mu_1_p) / sigma_1,
+            ub_integration=(ndtri_1_minus_weight - mu_1_p) / sigma_1)
+
+        lb_frst_argmt_integral_as = calculate_integral(
+            func=lambda y: (y * sigma_1 + mu_1_as) * (1 / (sqrt(2 * pi)) * exp(-1 / 2 * pow(y, 2))),
+            lb_integration=(ndtri_0 - mu_1_as) / sigma_1,
+            ub_integration=(ndtri_1_minus_weight - mu_1_as) / sigma_1)
+
+        lb_frst_argmt_integral = weight * lb_frst_argmt_integral_p + (1-weight) * lb_frst_argmt_integral_as
+
+        ub_frst_argmt_integral_p = calculate_integral(
+            func=lambda y: (y * sigma_1 + mu_1_p) * (1 / (sqrt(2 * pi)) * exp(-1 / 2 * pow(y, 2))),
+            lb_integration=(ndtri_weight - mu_1_p) / sigma_1,
+            ub_integration=(ndtri_1 - mu_1_p) / sigma_1)
+
+        ub_frst_argmt_integral_as = calculate_integral(
+            func=lambda y: (y * sigma_1 + mu_1_as) * (1 / (sqrt(2 * pi)) * exp(-1 / 2 * pow(y, 2))),
+            lb_integration=(ndtri_weight - mu_1_as) / sigma_1,
+            ub_integration=(ndtri_1 - mu_1_as) / sigma_1)
+
+        ub_frst_argmt_integral = weight * ub_frst_argmt_integral_p + (1-weight) * ub_frst_argmt_integral_as
 
         # Y0
         mu_0_as = a0 + b0 * x + c0
         mu_0_h = a0 + b0 * x
         # QUESTION: Where do we account for the fact that this x resulted in EITHER AS or P? we don't have another x like this with the opposite strata. We are taking weighted average but where does the probability of being AS/P - in terms of Beta - is addressed?
 
-        f1 = stats.norm(loc=mu_0_as, scale=sigma_0)
-        f2 = stats.norm(loc=mu_0_h, scale=sigma_0)
+        weight = pi_h / p_t0d0
+        f1 = stats.norm(loc=mu_0_h, scale=sigma_0)
+        f2 = stats.norm(loc=mu_0_as, scale=sigma_0)
         component_distributions = [f1, f2]
-        weight = p_t0d0 - pi_h / p_t0d0
         ps = [weight, 1 - weight]
-        alpha_list = [pi_h / p_t1d0, 1, 0, 1 - pi_h / p_t1d0]
 
-        scnd_argmt_integral_list = calculate_integral_bounds(component_distributions, weight, ps, alpha_list, mu_y_0_x,
-                                                             sigma_0)
-        lb_scnd_argmt_integral_lb, lb_scnd_argmt_integral_ub, ub_scnd_argmt_integral_lb, ub_scnd_argmt_integral_ub = scnd_argmt_integral_list
+        ndtri_h_t1d0 = get_ndtri_of_mix(pi_h / p_t1d0, component_distributions, ps, weight)
+        ndtri_1 = get_ndtri_of_mix(1, component_distributions, ps, weight)
+        ndtri_0 = get_ndtri_of_mix(0, component_distributions, ps, weight)
+        ndtri_1_minus_h_t1d0 = get_ndtri_of_mix(1 - pi_h / p_t1d0, component_distributions, ps, weight)
 
-        integrals = {
-            'lb_frst_argmt_integral': {'lb': lb_frst_argmt_integral_lb, 'ub': lb_frst_argmt_integral_ub, 'mu': mu_y_1_x,
-                                       'sigma': sigma_1},
-            'lb_scnd_argmt_integral': {'lb': lb_scnd_argmt_integral_lb, 'ub': lb_scnd_argmt_integral_ub, 'mu': mu_y_0_x,
-                                       'sigma': sigma_0},
-            'ub_frst_argmt_integral': {'lb': ub_frst_argmt_integral_lb, 'ub': ub_frst_argmt_integral_ub, 'mu': mu_y_1_x,
-                                       'sigma': sigma_1},
-            'ub_scnd_argmt_integral': {'lb': ub_scnd_argmt_integral_lb, 'ub': ub_scnd_argmt_integral_ub, 'mu': mu_y_0_x,
-                                       'sigma': sigma_0}
-        }
+        lb_scnd_argmt_integral_h = calculate_integral(
+            func=lambda y: (y * sigma_0 + mu_0_h) * (1 / (sqrt(2 * pi)) * exp(-1 / 2 * pow(y, 2))),
+            lb_integration=(ndtri_h_t1d0 - mu_0_h) / sigma_0,
+            ub_integration=(ndtri_1 - mu_0_h) / sigma_0)
 
-        for k in integrals.keys():
-            lb = integrals[k]['lb']
-            ub = integrals[k]['ub']
-            integrals[k]['result'] = calculate_integral(
-                lambda y: (y * integrals[k]['sigma'] + integrals[k]['mu']) * 1 / (sqrt(2 * pi)) * exp(
-                    -1 / 2 * pow(y, 2)), lb, ub)  # if lb!=ub else 0
+        lb_scnd_argmt_integral_as = calculate_integral(
+            func=lambda y: (y * sigma_0 + mu_0_as) * (1 / (sqrt(2 * pi)) * exp(-1 / 2 * pow(y, 2))),
+            lb_integration=(ndtri_h_t1d0 - mu_0_as) / sigma_0,
+            ub_integration=(ndtri_1 - mu_0_as) / sigma_0)
 
-        zhang_rubin_lb = integrals['lb_frst_argmt_integral']['result'] - integrals['lb_scnd_argmt_integral']['result']
-        zhang_rubin_ub = integrals['ub_frst_argmt_integral']['result'] - integrals['ub_scnd_argmt_integral']['result']
+        lb_scnd_argmt_integral = weight * lb_scnd_argmt_integral_h + (1-weight) * lb_scnd_argmt_integral_as
+
+
+        ub_scnd_argmt_integral_h = calculate_integral(
+            func=lambda y: (y * sigma_0 + mu_0_h) * (1 / (sqrt(2 * pi)) * exp(-1 / 2 * pow(y, 2))),
+            lb_integration=(ndtri_0 - mu_0_h) / sigma_0,
+            ub_integration=(ndtri_1_minus_h_t1d0 - mu_0_h) / sigma_0)
+
+        ub_scnd_argmt_integral_as = calculate_integral(
+            func=lambda y: (y * sigma_0 + mu_0_as) * (1 / (sqrt(2 * pi)) * exp(-1 / 2 * pow(y, 2))),
+            lb_integration=(ndtri_0 - mu_0_as) / sigma_0,
+            ub_integration=(ndtri_1_minus_h_t1d0 - mu_0_as) / sigma_0)
+
+        ub_scnd_argmt_integral = weight * ub_scnd_argmt_integral_h + (1-weight) * ub_scnd_argmt_integral_as
+
+
+        zhang_rubin_lb = lb_frst_argmt_integral - lb_scnd_argmt_integral
+        zhang_rubin_ub = ub_frst_argmt_integral - ub_scnd_argmt_integral
         if plot_and_print:
             print(f"""pi_h {round(pi_h, 3)}:
-            LB: 1st intagral: {round(integrals['lb_frst_argmt_integral']['lb'], 2)} to {round(integrals['lb_frst_argmt_integral']['ub'], 2)}. 2nd intagral: {integrals['lb_scnd_argmt_integral']['lb']} to {round(integrals['lb_scnd_argmt_integral']['ub'], 2)}.
-            UB: 1st intagral: {round(integrals['ub_frst_argmt_integral']['lb'], 2)} to {round(integrals['ub_frst_argmt_integral']['ub'], 2)}. 2nd intagral: {integrals['ub_scnd_argmt_integral']['lb']} to {round(integrals['ub_scnd_argmt_integral']['ub'], 2)}. 
             Zhang and Rubin bounds are [{zhang_rubin_lb}, {zhang_rubin_ub}]
             """)
         zhang_rubin_lb_results.append(zhang_rubin_lb)
@@ -320,7 +335,7 @@ def calc_zhang_rubin_bounds_per_x(
 def calc_zhang_rubin_bounds(df: pd.DataFrame) -> List[Tuple[float, float]]:
     list_of_bounds = list()
     for index, row in df.iterrows():
-        if index%10000==0:
+        if index%1000==0:
             print(f"row {index} out of {df.shape[0]}")
         bound = calc_zhang_rubin_bounds_per_x(x=row.x, mu_y_0_x=row.mu0, mu_y_1_x=row.mu1, sigma_0=row.sigma_0, sigma_1=row.sigma_1,  a0=row.a0, b0=row.b0, c0=row.c0, a1=row.a1, b1=row.b1, c1=row.c1, beta_d=row.beta_d, pi_h_step=0.01)
         list_of_bounds.append(bound)
