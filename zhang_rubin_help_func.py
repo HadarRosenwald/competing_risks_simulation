@@ -141,7 +141,7 @@ def plot_zhang_rubin_bounds(df: pd.DataFrame, zhang_rubin_bounds: List[Tuple[flo
     mu_y_1_x = df.mu1
 
     lb, up = zip(*zhang_rubin_bounds)
-    print(f"lower bound: {lb}, upper bound: {up}, true value: {mu_y_1_x - mu_y_0_x}")
+    # print(f"lower bound: {lb}, upper bound: {up}, true value: {mu_y_1_x - mu_y_0_x}")
     plt.scatter(list(df.x), lb, label="Lower bound", s=0.1)
     plt.scatter(list(df.x), up, label="Upper bound", s=0.1)
     plt.scatter(list(df.x), mu_y_1_x - mu_y_0_x, label=r'$\mu_{y(1)|x}-\mu_{y(0)|x}$', s=0.1)
