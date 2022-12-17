@@ -11,6 +11,7 @@ from scipy import stats
 
 from consts import default_random_seed
 from consts import y1_dist_param_default, y0_dist_param_default
+from mixture_gaussians import MixtureDistribution
 from sample_generation import create_sample
 from strata import Strata
 
@@ -18,19 +19,19 @@ random.seed(default_random_seed)
 
 
 ################# zhang and rubin entities ########################
-def calc_non_parametric_p_t0d0_p_t1d0(df: pd.DataFrame) -> Tuple[float]:
+def calc_non_parametric_p_t0d0_p_t1d0(df: pd.DataFrame) -> Tuple[float, float]:
     p_t0d0 = df.loc[(df.D_obs == 0) & (df.t == 0)].shape[0] / df.loc[df.t == 0].shape[0]
     p_t1d0 = df.loc[(df.D_obs == 0) & (df.t == 1)].shape[0] / df.loc[df.t == 1].shape[0]
     return p_t0d0, p_t1d0
 
 
-def get_y_0_obs_y_1_obs(df: pd.DataFrame) -> Tuple[np.ndarray]:
+def get_y_0_obs_y_1_obs(df: pd.DataFrame) -> Tuple[float, float]:
     y_0_obs = df.loc[df.t == 0]['Y0'].dropna()
     y_1_obs = df.loc[df.t == 1]['Y1'].dropna()
     return y_0_obs, y_1_obs
 
 
-def get_q1_q2(p_t0d0: float, p_t1d0: float, pi_h: float) -> Tuple[float]:
+def get_q1_q2(p_t0d0: float, p_t1d0: float, pi_h: float) -> Tuple[float, float]:
     q1 = p_t0d0 / p_t1d0 - pi_h / p_t1d0
     q2 = 1 - pi_h / p_t0d0
     return q1, q2
@@ -38,7 +39,7 @@ def get_q1_q2(p_t0d0: float, p_t1d0: float, pi_h: float) -> Tuple[float]:
 
 ################# zhang and rubin non parametric bounds ########################
 def calc_non_parametric_zhang_rubin_given_arg(y_0_obs: np.ndarray, y_1_obs: np.ndarray, q1: float, q2: float) -> Tuple[
-    float]:
+    float, float]:
     y_0_obs_sorted = np.sort(y_0_obs)
     y_1_obs_sorted = np.sort(y_1_obs)
     zhang_rubin_lb = np.average(y_1_obs_sorted[0: round(len(y_1_obs_sorted) * q1)]) - np.average(
@@ -53,7 +54,7 @@ def calc_non_parametric_zhang_rubin(sample_df: pd.DataFrame,
                                     plot_and_print: bool = False,
                                     pi_h_step: float = 0.001):
     p_t0d0, p_t1d0 = calc_non_parametric_p_t0d0_p_t1d0(sample_df)
-    lower_pi = max(0, p_t0d0 - p_t1d0)
+    lower_pi = max(0.0, p_t0d0 - p_t1d0)
     upper_pi = min(p_t0d0, 1 - p_t1d0)
     pi_h_list = np.arange(lower_pi, upper_pi + pi_h_step, pi_h_step)
 
@@ -76,7 +77,7 @@ def calc_non_parametric_zhang_rubin(sample_df: pd.DataFrame,
     zhang_rubin_lb = np.nanmin(zhang_rubin_lb_results)
     zhang_rubin_ub = np.nanmax(zhang_rubin_ub_results)
 
-    return (zhang_rubin_lb, zhang_rubin_ub)
+    return zhang_rubin_lb, zhang_rubin_ub
 
 
 def pi_h_and_bounds_plots_controller(df: pd.DataFrame) -> None:
@@ -155,55 +156,9 @@ def plot_zhang_rubin_bounds(df: pd.DataFrame, zhang_rubin_bounds: List[Tuple[flo
     return {'lb': lb, 'up': up, 'true value': mu_y_1_x - mu_y_0_x}
 
 
-################# ndtri of mixture of gaussian ########################
-def continuous_bisect_fun_left(f, v, lo, hi):
-    # Return the smallest value x between lo and hi such that f(x) >= v
-    val_range = [lo, hi]
-    k = 0.5 * sum(val_range)
-    for i in range(32):  # TODO WHY 32
-        val_range[int(f(k) > v)] = k
-        next_k = 0.5 * sum(val_range)
-        if next_k == k:
-            break
-        k = next_k
-    return k
-
-
-def get_mixture_cdf(component_distributions, ps):
-    # Return the function that is the cdf of the mixture distribution
-    return lambda x: sum(component_dist.cdf(x) * p for component_dist, p in zip(component_distributions, ps))
-
-
-def mixture_quantile(p, component_distributions, ps):
-    # Return the pth quantile of the mixture distribution given by the component distributions and their probabilities
-    mixture_cdf = get_mixture_cdf(component_distributions, ps)
-
-    lo = np.min([dist.ppf(p) for dist in component_distributions])
-    hi = np.max([dist.ppf(p) for dist in component_distributions])
-
-    return continuous_bisect_fun_left(mixture_cdf, p, lo, hi)
-
-
-# def cdf_of_mixture_of_quantile(f1, f2, quantile, weight):
-#     ps_component1 = f1.cdf(quantile)
-#     ps_component2 = f2.cdf(quantile)
-#     ps_mixture = weight * ps_component1 + (1 - weight) * ps_component2
-#     return ps_mixture
-
-
-def get_quantile_of_mix(alpha, component_distributions, ps, weight):
-    if alpha == 0:
-        quantile = -float('Inf')  # alpha=0 -> quantile=-inf
-    elif alpha == 1:
-        quantile = float('Inf')  # alpha=1 -> quantile=inf
-    else:
-        quantile = mixture_quantile(alpha, component_distributions, ps)
-    return quantile
-
-
 ################# zhang and rubin parametric bounds ########################
-def calculate_integral(func, lb_integration, ub_integration):
-    integral_result, estimate_absolute_error = integrate.quad(func, lb_integration, ub_integration)
+def calculate_integral(func, lb_integration: float, ub_integration: float):
+    integral_result, estimate_absolute_error = integrate.quad(func=func, a=lb_integration, b=ub_integration)
     return integral_result
 
 
@@ -212,7 +167,7 @@ def cdf_s_normal(y: float) -> float:
 
 
 def integrand_func(sigma: float, mu: float) -> Callable[[float, float], float]:
-    return lambda y: y * (1/(sigma*sqrt(2 * pi))) * exp(-1/2 * pow(((y-mu)/sigma),2))
+    return lambda y: y * (1 / (sigma * sqrt(2 * pi))) * exp(-1 / 2 * pow(((y - mu) / sigma), 2))
 
 
 def calc_zhang_rubin_bounds_per_x(
@@ -226,7 +181,7 @@ def calc_zhang_rubin_bounds_per_x(
     # pi
     p_t0d0 = 1 - 1 / (1 + exp(-beta_d0 - beta_d2 * x))
     p_t1d0 = 1 - 1 / (1 + exp(-beta_d0 - beta_d1 - beta_d2 * x))
-    lower_pi = max(0, p_t0d0 - p_t1d0)
+    lower_pi = max(0.0, p_t0d0 - p_t1d0)
     upper_pi = min(p_t0d0, 1 - p_t1d0)
     pi_h_list = np.arange(lower_pi, upper_pi + pi_h_step, pi_h_step)
     if plot_and_print:
@@ -237,85 +192,89 @@ def calc_zhang_rubin_bounds_per_x(
     zhang_rubin_ub_results = []
     for pi_h in pi_h_list:
         # Y1
-        mu_1_as = a1 + b1 * x + c1
         mu_1_p = a1 + b1 * x
+        mu_1_as = mu_1_p + c1
         # QUESTION: Where do we account for the fact that this x resulted in EITHER AS or P? we don't have another x like this with the opposite strata. We are taking weighted average but where does the probability of being AS/P - in terms of Beta - is addressed?
-
         weight = 1 - p_t0d0 / p_t1d0 + pi_h / p_t1d0
-        f1 = stats.norm(loc=mu_1_p, scale=sigma_1)
-        f2 = stats.norm(loc=mu_1_as, scale=sigma_1)
-        component_distributions = [f1, f2]
-        ps = [weight, 1 - weight]
+        m = MixtureDistribution([stats.norm(loc=mu_1_p, scale=sigma_1), stats.norm(loc=mu_1_as, scale=sigma_1)],
+                                [weight, 1 - weight])
 
+        ppf_0 = m.ppf(0)
+        ppf_1_minus_weight = m.ppf(1 - weight)
         lb_frst_argmt_integral_p = calculate_integral(
             func=integrand_func(sigma_1, mu_1_p),
-            lb_integration=get_quantile_of_mix(0, component_distributions, ps, weight),
-            ub_integration=get_quantile_of_mix(1 - weight, component_distributions, ps, weight)
+            lb_integration=ppf_0,
+            ub_integration=ppf_1_minus_weight
         )
         lb_frst_argmt_integral_as = calculate_integral(
             func=integrand_func(sigma_1, mu_1_as),
-            lb_integration=get_quantile_of_mix(0, component_distributions, ps, weight),
-            ub_integration=get_quantile_of_mix(1 - weight, component_distributions, ps, weight)
+            lb_integration=ppf_0,
+            ub_integration=ppf_1_minus_weight
         )
 
         lb_frst_argmt_integral = weight * lb_frst_argmt_integral_p + (1 - weight) * lb_frst_argmt_integral_as
 
+        ppf_weight = m.ppf(weight)
+        ppf_1 = m.ppf(1)
         ub_frst_argmt_integral_p = calculate_integral(
             func=integrand_func(sigma_1, mu_1_p),
-            lb_integration=get_quantile_of_mix(weight, component_distributions, ps, weight),
-            ub_integration=get_quantile_of_mix(1, component_distributions, ps, weight)
+            lb_integration=ppf_weight,
+            ub_integration=ppf_1
         )
         ub_frst_argmt_integral_as = calculate_integral(
             func=integrand_func(sigma_1, mu_1_as),
-            lb_integration=get_quantile_of_mix(weight, component_distributions, ps, weight),
-            ub_integration=get_quantile_of_mix(1, component_distributions, ps, weight)
+            lb_integration=ppf_weight,
+            ub_integration=ppf_1
         )
 
         ub_frst_argmt_integral = weight * ub_frst_argmt_integral_p + (1 - weight) * ub_frst_argmt_integral_as
 
         # Y0
-        mu_0_as = a0 + b0 * x + c0
         mu_0_h = a0 + b0 * x
-        # QUESTION: Where do we account for the fact that this x resulted in EITHER AS or P? we don't have another x like this with the opposite strata. We are taking weighted average but where does the probability of being AS/P - in terms of Beta - is addressed?
-
+        mu_0_as = mu_0_h + c0
+        # QUESTION: Where do we account for the fact that this x resulted in EITHER AS or H? we don't have another x like this with the opposite strata. We are taking weighted average but where does the probability of being AS/P - in terms of Beta - is addressed?
         weight = pi_h / p_t0d0
-        f1 = stats.norm(loc=mu_0_h, scale=sigma_0)
-        f2 = stats.norm(loc=mu_0_as, scale=sigma_0)
-        component_distributions = [f1, f2]
-        ps = [weight, 1 - weight]
+        m = MixtureDistribution([stats.norm(loc=mu_0_h, scale=sigma_0), stats.norm(loc=mu_0_as, scale=sigma_0)],
+                                [weight, 1 - weight])
 
+        ppf_pih_t1t0 = m.ppf(pi_h / p_t1d0)
+        ppf_1 = m.ppf(1)
         lb_scnd_argmt_integral_h = calculate_integral(
             func=integrand_func(sigma_0, mu_0_h),
-            lb_integration=get_quantile_of_mix(pi_h / p_t1d0, component_distributions, ps, weight),
-            ub_integration=get_quantile_of_mix(1, component_distributions, ps, weight)
+            lb_integration=ppf_pih_t1t0,
+            ub_integration=ppf_1
         )
         lb_scnd_argmt_integral_as = calculate_integral(
             func=integrand_func(sigma_0, mu_0_as),
-            lb_integration=get_quantile_of_mix(pi_h / p_t1d0, component_distributions, ps, weight),
-            ub_integration=get_quantile_of_mix(1, component_distributions, ps, weight)
+            lb_integration=ppf_pih_t1t0,
+            ub_integration=ppf_1
         )
 
         lb_scnd_argmt_integral = weight * lb_scnd_argmt_integral_h + (1 - weight) * lb_scnd_argmt_integral_as
 
+        ppf_0 = m.ppf(0)
+        ppf_1_minus_pih_t1t0 = m.ppf(1 - pi_h / p_t1d0)
         ub_scnd_argmt_integral_h = calculate_integral(
             func=integrand_func(sigma_0, mu_0_h),
-            lb_integration=get_quantile_of_mix(0, component_distributions, ps, weight),
-            ub_integration=get_quantile_of_mix(1 - pi_h / p_t1d0, component_distributions, ps, weight)
+            lb_integration=ppf_0,
+            ub_integration=ppf_1_minus_pih_t1t0
         )
         ub_scnd_argmt_integral_as = calculate_integral(
             func=integrand_func(sigma_0, mu_0_as),
-            lb_integration=get_quantile_of_mix(0, component_distributions, ps, weight),
-            ub_integration=get_quantile_of_mix(1 - pi_h / p_t1d0, component_distributions, ps, weight)
+            lb_integration=ppf_0,
+            ub_integration=ppf_1_minus_pih_t1t0
         )
 
         ub_scnd_argmt_integral = weight * ub_scnd_argmt_integral_h + (1 - weight) * ub_scnd_argmt_integral_as
 
         zhang_rubin_lb = lb_frst_argmt_integral - lb_scnd_argmt_integral
         zhang_rubin_ub = ub_frst_argmt_integral - ub_scnd_argmt_integral
+
         if plot_and_print:
             print(f"""pi_h {round(pi_h, 3)}:
             Zhang and Rubin bounds are [{zhang_rubin_lb}, {zhang_rubin_ub}]
             """)
+
         zhang_rubin_lb_results.append(zhang_rubin_lb)
         zhang_rubin_ub_results.append(zhang_rubin_ub)
 
