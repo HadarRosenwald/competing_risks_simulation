@@ -184,22 +184,21 @@ def mixture_quantile(p, component_distributions, ps):
     return continuous_bisect_fun_left(mixture_cdf, p, lo, hi)
 
 
-def cdf_of_mixture_of_quantile(f1, f2, quantile, weight):
-    ps_component1 = f1.cdf(quantile)
-    ps_component2 = f2.cdf(quantile)
-    ps_mixture = weight * ps_component1 + (1 - weight) * ps_component2
-    return ps_mixture
+# def cdf_of_mixture_of_quantile(f1, f2, quantile, weight):
+#     ps_component1 = f1.cdf(quantile)
+#     ps_component2 = f2.cdf(quantile)
+#     ps_mixture = weight * ps_component1 + (1 - weight) * ps_component2
+#     return ps_mixture
 
 
-def get_ndtri_of_mix(alpha, component_distributions, ps, weight):
+def get_quantile_of_mix(alpha, component_distributions, ps, weight):
     if alpha == 0:
-        ndtri_mix = 0.0  # alpha=0 -> quantile=-inf -> ndtri=0
+        quantile = -float('Inf')  # alpha=0 -> quantile=-inf
     elif alpha == 1:
-        ndtri_mix = 1.0  # alpha=1 -> quantile=inf -> ndtri=1
+        quantile = float('Inf')  # alpha=1 -> quantile=inf
     else:
         quantile = mixture_quantile(alpha, component_distributions, ps)
-        ndtri_mix = cdf_of_mixture_of_quantile(component_distributions[0], component_distributions[0], quantile, weight)
-    return ndtri_mix
+    return quantile
 
 
 ################# zhang and rubin parametric bounds ########################
@@ -213,7 +212,7 @@ def cdf_s_normal(y: float) -> float:
 
 
 def integrand_func(sigma: float, mu: float) -> Callable[[float, float], float]:
-    return lambda y: (y * sigma + mu) * cdf_s_normal(y)
+    return lambda y: y * (1/(sigma*sqrt(2 * pi))) * exp(-1/2 * pow(((y-mu)/sigma),2))
 
 
 def calc_zhang_rubin_bounds_per_x(
@@ -248,30 +247,29 @@ def calc_zhang_rubin_bounds_per_x(
         component_distributions = [f1, f2]
         ps = [weight, 1 - weight]
 
-        ndtri_0 = get_ndtri_of_mix(0, component_distributions, ps, weight)
-        ndtri_1_minus_weight = get_ndtri_of_mix(1 - weight, component_distributions, ps, weight)
-        ndtri_weight = get_ndtri_of_mix(weight, component_distributions, ps, weight)
-        ndtri_1 = get_ndtri_of_mix(1, component_distributions, ps, weight)
-
         lb_frst_argmt_integral_p = calculate_integral(
             func=integrand_func(sigma_1, mu_1_p),
-            lb_integration=(ndtri_0 - mu_1_p) / sigma_1,
-            ub_integration=(ndtri_1_minus_weight - mu_1_p) / sigma_1)
+            lb_integration=get_quantile_of_mix(0, component_distributions, ps, weight),
+            ub_integration=get_quantile_of_mix(1 - weight, component_distributions, ps, weight)
+        )
         lb_frst_argmt_integral_as = calculate_integral(
             func=integrand_func(sigma_1, mu_1_as),
-            lb_integration=(ndtri_0 - mu_1_as) / sigma_1,
-            ub_integration=(ndtri_1_minus_weight - mu_1_as) / sigma_1)
+            lb_integration=get_quantile_of_mix(0, component_distributions, ps, weight),
+            ub_integration=get_quantile_of_mix(1 - weight, component_distributions, ps, weight)
+        )
 
         lb_frst_argmt_integral = weight * lb_frst_argmt_integral_p + (1 - weight) * lb_frst_argmt_integral_as
 
         ub_frst_argmt_integral_p = calculate_integral(
             func=integrand_func(sigma_1, mu_1_p),
-            lb_integration=(ndtri_weight - mu_1_p) / sigma_1,
-            ub_integration=(ndtri_1 - mu_1_p) / sigma_1)
+            lb_integration=get_quantile_of_mix(weight, component_distributions, ps, weight),
+            ub_integration=get_quantile_of_mix(1, component_distributions, ps, weight)
+        )
         ub_frst_argmt_integral_as = calculate_integral(
             func=integrand_func(sigma_1, mu_1_as),
-            lb_integration=(ndtri_weight - mu_1_as) / sigma_1,
-            ub_integration=(ndtri_1 - mu_1_as) / sigma_1)
+            lb_integration=get_quantile_of_mix(weight, component_distributions, ps, weight),
+            ub_integration=get_quantile_of_mix(1, component_distributions, ps, weight)
+        )
 
         ub_frst_argmt_integral = weight * ub_frst_argmt_integral_p + (1 - weight) * ub_frst_argmt_integral_as
 
@@ -286,30 +284,29 @@ def calc_zhang_rubin_bounds_per_x(
         component_distributions = [f1, f2]
         ps = [weight, 1 - weight]
 
-        ndtri_h_t1d0 = get_ndtri_of_mix(pi_h / p_t1d0, component_distributions, ps, weight)
-        ndtri_1 = get_ndtri_of_mix(1, component_distributions, ps, weight)
-        ndtri_0 = get_ndtri_of_mix(0, component_distributions, ps, weight)
-        ndtri_1_minus_h_t1d0 = get_ndtri_of_mix(1 - pi_h / p_t1d0, component_distributions, ps, weight)
-
         lb_scnd_argmt_integral_h = calculate_integral(
             func=integrand_func(sigma_0, mu_0_h),
-            lb_integration=(ndtri_h_t1d0 - mu_0_h) / sigma_0,
-            ub_integration=(ndtri_1 - mu_0_h) / sigma_0)
+            lb_integration=get_quantile_of_mix(pi_h / p_t1d0, component_distributions, ps, weight),
+            ub_integration=get_quantile_of_mix(1, component_distributions, ps, weight)
+        )
         lb_scnd_argmt_integral_as = calculate_integral(
             func=integrand_func(sigma_0, mu_0_as),
-            lb_integration=(ndtri_h_t1d0 - mu_0_as) / sigma_0,
-            ub_integration=(ndtri_1 - mu_0_as) / sigma_0)
+            lb_integration=get_quantile_of_mix(pi_h / p_t1d0, component_distributions, ps, weight),
+            ub_integration=get_quantile_of_mix(1, component_distributions, ps, weight)
+        )
 
         lb_scnd_argmt_integral = weight * lb_scnd_argmt_integral_h + (1 - weight) * lb_scnd_argmt_integral_as
 
         ub_scnd_argmt_integral_h = calculate_integral(
             func=integrand_func(sigma_0, mu_0_h),
-            lb_integration=(ndtri_0 - mu_0_h) / sigma_0,
-            ub_integration=(ndtri_1_minus_h_t1d0 - mu_0_h) / sigma_0)
+            lb_integration=get_quantile_of_mix(0, component_distributions, ps, weight),
+            ub_integration=get_quantile_of_mix(1 - pi_h / p_t1d0, component_distributions, ps, weight)
+        )
         ub_scnd_argmt_integral_as = calculate_integral(
             func=integrand_func(sigma_0, mu_0_as),
-            lb_integration=(ndtri_0 - mu_0_as) / sigma_0,
-            ub_integration=(ndtri_1_minus_h_t1d0 - mu_0_as) / sigma_0)
+            lb_integration=get_quantile_of_mix(0, component_distributions, ps, weight),
+            ub_integration=get_quantile_of_mix(1 - pi_h / p_t1d0, component_distributions, ps, weight)
+        )
 
         ub_scnd_argmt_integral = weight * ub_scnd_argmt_integral_h + (1 - weight) * ub_scnd_argmt_integral_as
 
