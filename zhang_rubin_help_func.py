@@ -11,7 +11,7 @@ from scipy import stats
 
 from consts import default_random_seed
 from consts import y1_dist_param_default, y0_dist_param_default
-from mixture_gaussians import MixtureDistribution
+from mixture_gaussians import GaussianMixtureDistribution
 from sample_generation import create_sample
 from strata import Strata
 
@@ -196,8 +196,8 @@ def calc_zhang_rubin_bounds_per_x(
         mu_1_as = mu_1_p + c1
         # QUESTION: Where do we account for the fact that this x resulted in EITHER AS or P? we don't have another x like this with the opposite strata. We are taking weighted average but where does the probability of being AS/P - in terms of Beta - is addressed?
         weight = 1 - p_t0d0 / p_t1d0 + pi_h / p_t1d0
-        m = MixtureDistribution([stats.norm(loc=mu_1_p, scale=sigma_1), stats.norm(loc=mu_1_as, scale=sigma_1)],
-                                [weight, 1 - weight])
+        m = GaussianMixtureDistribution([stats.norm(loc=mu_1_p, scale=sigma_1), stats.norm(loc=mu_1_as, scale=sigma_1)],
+                                        [weight, 1 - weight])
 
         ppf_0 = m.ppf(0)
         ppf_1_minus_weight = m.ppf(1 - weight)
@@ -234,8 +234,8 @@ def calc_zhang_rubin_bounds_per_x(
         mu_0_as = mu_0_h + c0
         # QUESTION: Where do we account for the fact that this x resulted in EITHER AS or H? we don't have another x like this with the opposite strata. We are taking weighted average but where does the probability of being AS/P - in terms of Beta - is addressed?
         weight = pi_h / p_t0d0
-        m = MixtureDistribution([stats.norm(loc=mu_0_h, scale=sigma_0), stats.norm(loc=mu_0_as, scale=sigma_0)],
-                                [weight, 1 - weight])
+        m = GaussianMixtureDistribution([stats.norm(loc=mu_0_h, scale=sigma_0), stats.norm(loc=mu_0_as, scale=sigma_0)],
+                                        [weight, 1 - weight])
 
         ppf_pih_t1t0 = m.ppf(pi_h / p_t1d0)
         ppf_1 = m.ppf(1)
