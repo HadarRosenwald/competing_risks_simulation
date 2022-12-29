@@ -212,7 +212,7 @@ def calc_zhang_rubin_bounds_per_x(
             ub_integration=ppf_1_minus_weight
         )
 
-        lb_frst_argmt_integral = weight * lb_frst_argmt_integral_p + (1 - weight) * lb_frst_argmt_integral_as
+        lb_frst_argmt_integral = weight * (1/(1 - weight)) * lb_frst_argmt_integral_p + (1 - weight) * (1/(1 - weight)) * lb_frst_argmt_integral_as
 
         ppf_weight = m.ppf(weight)
         ppf_1 = m.ppf(1)
@@ -227,7 +227,7 @@ def calc_zhang_rubin_bounds_per_x(
             ub_integration=ppf_1
         )
 
-        ub_frst_argmt_integral = weight * ub_frst_argmt_integral_p + (1 - weight) * ub_frst_argmt_integral_as
+        ub_frst_argmt_integral = weight * (1/(1 - weight)) * ub_frst_argmt_integral_p + (1 - weight) * (1/(1 - weight)) * ub_frst_argmt_integral_as
 
         # Y0
         mu_0_h = a0 + b0 * x
@@ -250,7 +250,7 @@ def calc_zhang_rubin_bounds_per_x(
             ub_integration=ppf_1
         )
 
-        lb_scnd_argmt_integral = weight * lb_scnd_argmt_integral_h + (1 - weight) * lb_scnd_argmt_integral_as
+        lb_scnd_argmt_integral = weight * (1/(1 - pi_h / p_t1d0)) * lb_scnd_argmt_integral_h + (1 - weight) * (1/(1 - pi_h / p_t1d0)) * lb_scnd_argmt_integral_as
 
         ppf_0 = m.ppf(0)
         ppf_1_minus_pih_t1t0 = m.ppf(1 - pi_h / p_t1d0)
@@ -265,7 +265,7 @@ def calc_zhang_rubin_bounds_per_x(
             ub_integration=ppf_1_minus_pih_t1t0
         )
 
-        ub_scnd_argmt_integral = weight * ub_scnd_argmt_integral_h + (1 - weight) * ub_scnd_argmt_integral_as
+        ub_scnd_argmt_integral = weight * (1/(1 - pi_h / p_t1d0)) * ub_scnd_argmt_integral_h + (1 - weight) * (1/(1 - pi_h / p_t1d0)) * ub_scnd_argmt_integral_as
 
         zhang_rubin_lb = lb_frst_argmt_integral - lb_scnd_argmt_integral
         zhang_rubin_ub = ub_frst_argmt_integral - ub_scnd_argmt_integral
