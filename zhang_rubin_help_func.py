@@ -173,7 +173,7 @@ def integrand_func(sigma: float, mu: float) -> Callable[[float, float], float]:
 def calc_zhang_rubin_bounds_per_x(
         x: float, mu_y_0_x: float, mu_y_1_x: float, sigma_0: float, sigma_1: float,
         a0: float, b0: float, c0: float, a1: float, b1: float, c1: float,
-        beta_d: List[float], plot_and_print: bool = False, pi_h_step: float = 0.001,
+        beta_d: List[float], plot_and_print: bool = False, pi_h_len_grid_search: int = 10,
         calc_non_parametric=False) -> Tuple[float, float]:
     beta_d0, beta_d1, beta_d2 = beta_d
     # print(f"mu0: {mu_y_0_x}, mu1: {mu_y_1_x}, sigma0: {sigma_0}, sigma1: {sigma_1}, beta: {beta_d}")
@@ -183,7 +183,7 @@ def calc_zhang_rubin_bounds_per_x(
     p_t1d0 = 1 - 1 / (1 + exp(-beta_d0 - beta_d1 - beta_d2 * x))
     lower_pi = max(0.0, p_t0d0 - p_t1d0)
     upper_pi = min(p_t0d0, 1 - p_t1d0)
-    pi_h_list = np.arange(lower_pi, upper_pi + pi_h_step, pi_h_step)
+    pi_h_list = np.linspace(lower_pi, upper_pi, num=pi_h_len_grid_search)
     if plot_and_print:
         plot_pi_h(lower_pi, upper_pi)
 
@@ -301,6 +301,7 @@ def calc_zhang_rubin_bounds(df: pd.DataFrame) -> List[Tuple[float, float]]:
             print(f"row {index} out of {df.shape[0]}")
         bound = calc_zhang_rubin_bounds_per_x(x=row.x, mu_y_0_x=row.mu0, mu_y_1_x=row.mu1, sigma_0=row.sigma_0,
                                               sigma_1=row.sigma_1, a0=row.a0, b0=row.b0, c0=row.c0, a1=row.a1,
-                                              b1=row.b1, c1=row.c1, beta_d=row.beta_d, pi_h_step=0.01)
+                                              b1=row.b1, c1=row.c1, beta_d=row.beta_d, pi_h_len_grid_search=5)
+
         list_of_bounds.append(bound)
     return list_of_bounds
