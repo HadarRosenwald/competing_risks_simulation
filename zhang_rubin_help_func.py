@@ -158,6 +158,8 @@ def plot_zhang_rubin_bounds(df: pd.DataFrame, zhang_rubin_bounds: List[Tuple[flo
 
 ################# zhang and rubin parametric bounds ########################
 def calculate_integral(func, lb_integration: float, ub_integration: float):
+    if lb_integration==ub_integration:
+        return 0
     integral_result, estimate_absolute_error = integrate.quad(func=func, a=lb_integration, b=ub_integration)
     return integral_result
 
@@ -212,7 +214,10 @@ def calc_zhang_rubin_bounds_per_x(
             ub_integration=ppf_1_minus_weight
         )
 
-        lb_frst_argmt_integral = weight * (1/(1 - weight)) * lb_frst_argmt_integral_p + (1 - weight) * (1/(1 - weight)) * lb_frst_argmt_integral_as
+        if lb_frst_argmt_integral_p==lb_frst_argmt_integral_as==0:
+            lb_frst_argmt_integral=0
+        else:
+            lb_frst_argmt_integral = weight * (1/(1 - weight)) * lb_frst_argmt_integral_p + (1 - weight) * (1/(1 - weight)) * lb_frst_argmt_integral_as
 
         ppf_weight = m.ppf(weight)
         ppf_1 = m.ppf(1)
@@ -227,7 +232,10 @@ def calc_zhang_rubin_bounds_per_x(
             ub_integration=ppf_1
         )
 
-        ub_frst_argmt_integral = weight * (1/(1 - weight)) * ub_frst_argmt_integral_p + (1 - weight) * (1/(1 - weight)) * ub_frst_argmt_integral_as
+        if ub_frst_argmt_integral_p==ub_frst_argmt_integral_as==0:
+            ub_frst_argmt_integral=0
+        else:
+            ub_frst_argmt_integral = weight * (1/(1 - weight)) * ub_frst_argmt_integral_p + (1 - weight) * (1/(1 - weight)) * ub_frst_argmt_integral_as
 
         # Y0
         mu_0_h = a0 + b0 * x
@@ -250,7 +258,10 @@ def calc_zhang_rubin_bounds_per_x(
             ub_integration=ppf_1
         )
 
-        lb_scnd_argmt_integral = weight * (1/(1 - pi_h / p_t1d0)) * lb_scnd_argmt_integral_h + (1 - weight) * (1/(1 - pi_h / p_t1d0)) * lb_scnd_argmt_integral_as
+        if lb_scnd_argmt_integral_h== lb_scnd_argmt_integral_as==0:
+            lb_scnd_argmt_integral=0
+        else:
+            lb_scnd_argmt_integral = weight * (1/(1 - pi_h / p_t1d0)) * lb_scnd_argmt_integral_h + (1 - weight) * (1/(1 - pi_h / p_t1d0)) * lb_scnd_argmt_integral_as
 
         ppf_0 = m.ppf(0)
         ppf_1_minus_pih_t1t0 = m.ppf(1 - pi_h / p_t1d0)
@@ -265,7 +276,10 @@ def calc_zhang_rubin_bounds_per_x(
             ub_integration=ppf_1_minus_pih_t1t0
         )
 
-        ub_scnd_argmt_integral = weight * (1/(1 - pi_h / p_t1d0)) * ub_scnd_argmt_integral_h + (1 - weight) * (1/(1 - pi_h / p_t1d0)) * ub_scnd_argmt_integral_as
+        if ub_scnd_argmt_integral_h==ub_scnd_argmt_integral_as==0:
+            ub_scnd_argmt_integral=0
+        else:
+            ub_scnd_argmt_integral = weight * (1/(1 - pi_h / p_t1d0)) * ub_scnd_argmt_integral_h + (1 - weight) * (1/(1 - pi_h / p_t1d0)) * ub_scnd_argmt_integral_as
 
         zhang_rubin_lb = lb_frst_argmt_integral - lb_scnd_argmt_integral
         zhang_rubin_ub = ub_frst_argmt_integral - ub_scnd_argmt_integral
