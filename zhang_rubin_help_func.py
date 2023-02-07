@@ -2,6 +2,7 @@ from math import exp, sqrt, pi, pow
 from typing import Callable
 from typing import Dict, List, Tuple
 
+from sklearn.ensemble import RandomForestRegressor
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -14,6 +15,7 @@ from consts import y1_dist_param_default, y0_dist_param_default
 from mixture_gaussians import GaussianMixtureDistribution
 from sample_generation import create_sample
 from strata import Strata
+from superquantile_model import *
 
 random.seed(default_random_seed)
 
@@ -131,16 +133,16 @@ def plot_pi_h_and_bounds(pi_h: List[float], zhang_rubin_lb: List[float], zhang_r
     plt.show()
 
 
-def plot_zhang_rubin_bounds(df: pd.DataFrame, zhang_rubin_bounds: List[Tuple[float, float]],
-                            y0_dist_param: Dict[str, float] = y0_dist_param_default,
-                            y1_dist_param: Dict[str, float] = y1_dist_param_default):
+def plot_zhang_rubin_bounds_on_survivors(df: pd.DataFrame, zhang_rubin_bounds: List[Tuple[float, float]],
+                                         y0_dist_param: Dict[str, float] = y0_dist_param_default,
+                                         y1_dist_param: Dict[str, float] = y1_dist_param_default):
     df_plot_as = df.loc[df.stratum == Strata.AS.name]
     plt.scatter(df_plot_as.x, (df_plot_as.Y1 - df_plot_as.Y0), label="True Y1 - Y0|AS", s=0.1)
 
     mu_y_0_x = df.mu0
     mu_y_1_x = df.mu1
 
-    lb, up = zip(*zhang_rubin_bounds)
+    lb, up = zhang_rubin_bounds
     # print(f"lower bound: {lb}, upper bound: {up}, true value: {mu_y_1_x - mu_y_0_x}")
     plt.scatter(list(df.x), lb, label="Lower bound", s=0.1)
     plt.scatter(list(df.x), up, label="Upper bound", s=0.1)
@@ -153,7 +155,7 @@ def plot_zhang_rubin_bounds(df: pd.DataFrame, zhang_rubin_bounds: List[Tuple[flo
     plt.ylabel('Y1-Y0|AS bounds')
     plt.ylim((min(-3, min(lb)), max(3, max(up))))
     plt.show()
-    return {'lb': lb, 'up': up, 'true value': mu_y_1_x - mu_y_0_x}
+    return {'x':df.x, 'lb': lb, 'up': up, 'true value': mu_y_1_x - mu_y_0_x}
 
 
 ################# zhang and rubin parametric bounds ########################
@@ -308,14 +310,110 @@ def calc_zhang_rubin_bounds_per_x(
     return (zhang_rubin_lb, zhang_rubin_ub)
 
 
-def calc_zhang_rubin_bounds(df: pd.DataFrame) -> List[Tuple[float, float]]:
-    list_of_bounds = list()
+def calc_zhang_rubin_bounds_using_cvar_est(df: pd.DataFrame, pi_h_len_grid_search: int = 5) -> Tuple[np.array, np.array]:
+    p_t0d0, p_t1d0 = calc_non_parametric_p_t0d0_p_t1d0(df)
+    lower_pi = max(0.0, p_t0d0 - p_t1d0)
+    upper_pi = min(p_t0d0, 1 - p_t1d0)
+    pi_h_list = np.linspace(lower_pi, upper_pi, num=pi_h_len_grid_search)
+
+    # bounds
+    zhang_rubin_lb_results = []
+    zhang_rubin_ub_results = []
+    for pi_h in pi_h_list:
+
+        # TODO re-considerate our train and predict data set. Currently only survivors. Is that the right way?
+
+        # Y_obs_1
+        X = np.array(df.x.loc[(df.t==1)&(df.D_obs==0)]).reshape(-1, 1) # X should be of shape (n_samples, n_features). Since X is currently 1D -> #2 dimension set to be 1
+        Y = np.array(df.Y_obs.loc[(df.t==1)&(df.D_obs==0)])
+
+
+
+        superquantile_model = KernelSuperquantileRegressor(
+            kernel=RFKernel(
+                RandomForestRegressor(
+                    n_estimators=n_estimators,
+                    max_depth=max_depth,
+                    max_features=max_features,
+                    min_samples_leaf=min_samples_leaf,
+                    n_jobs=-2)
+            ),
+            tau=p_t0d0/p_t1d0-pi_h/p_t1d0,
+            tail='left')
+
+        trained_superquantile_model = superquantile_model.fit(X, Y)
+        lb_frst_argmt_per_x = trained_superquantile_model.predict(np.array(df.x.loc[(df.D_obs==0)]).reshape(-1, 1))
+
+        superquantile_model = KernelSuperquantileRegressor(
+            kernel=RFKernel(
+                RandomForestRegressor(
+                    n_estimators=n_estimators,
+                    max_depth=max_depth,
+                    max_features=max_features,
+                    min_samples_leaf=min_samples_leaf,
+                    n_jobs=-2)
+            ),
+            tau=1-p_t0d0/p_t1d0+pi_h/p_t1d0,
+            tail='right')
+
+        trained_superquantile_model = superquantile_model.fit(X, Y)
+        ub_frst_argmt_per_x = trained_superquantile_model.predict(np.array(df.x.loc[(df.D_obs==0)]).reshape(-1, 1))
+
+        # Y_obs_0
+        X = np.array(df.x.loc[(df.t==0)&(df.D_obs==0)]).reshape(-1, 1) # X should be of shape (n_samples, n_features). Since X is currently 1D -> #2 dimension set to be 1
+        Y = np.array(df.Y_obs.loc[(df.t==0)&(df.D_obs==0)])
+
+        superquantile_model = KernelSuperquantileRegressor(
+            kernel=RFKernel(
+                RandomForestRegressor(
+                    n_estimators=n_estimators,
+                    max_depth=max_depth,
+                    max_features=max_features,
+                    min_samples_leaf=min_samples_leaf,
+                    n_jobs=-2)
+            ),
+            tau=pi_h/p_t1d0,
+            tail='right')
+
+        trained_superquantile_model = superquantile_model.fit(X, Y)
+        lb_scnd_argmt_per_x = trained_superquantile_model.predict(np.array(df.x.loc[(df.D_obs==0)]).reshape(-1, 1))
+
+        superquantile_model = KernelSuperquantileRegressor(
+            kernel=RFKernel(
+                RandomForestRegressor(
+                    n_estimators=n_estimators,
+                    max_depth=max_depth,
+                    max_features=max_features,
+                    min_samples_leaf=min_samples_leaf,
+                    n_jobs=-2)
+            ),
+            tau=1-pi_h/p_t1d0,
+            tail='left')
+
+        trained_superquantile_model = superquantile_model.fit(X, Y)
+        ub_scnd_argmt_per_x = trained_superquantile_model.predict(np.array(df.x.loc[(df.D_obs==0)]).reshape(-1, 1))
+
+
+        zhang_rubin_lb = lb_frst_argmt_per_x - lb_scnd_argmt_per_x
+        zhang_rubin_ub = ub_frst_argmt_per_x - ub_scnd_argmt_per_x
+
+        zhang_rubin_lb_results.append(zhang_rubin_lb)
+        zhang_rubin_ub_results.append(zhang_rubin_ub)
+
+    zhang_rubin_lb = np.array(zhang_rubin_lb_results).min(axis=0) #TODO - zhang_rubin_lb_results is a matrix of #pi rows and #x column. Here we take the min result per x (it can be different pi's for different x's. Is that ok?)
+    zhang_rubin_ub = np.array(zhang_rubin_ub_results).max(axis=0)
+
+    return (zhang_rubin_lb, zhang_rubin_ub)
+
+
+def calc_zhang_rubin_bounds_analytically(df: pd.DataFrame) -> List[Tuple[float]]: #List of the lower bounds and upper bounds
+    zhang_rubin_analytic_bounds = list()
     for index, row in df.iterrows():
         if index % 1000 == 0:
             print(f"row {index} out of {df.shape[0]}")
-        bound = calc_zhang_rubin_bounds_per_x(x=row.x, mu_y_0_x=row.mu0, mu_y_1_x=row.mu1, sigma_0=row.sigma_0,
+        bound_per_x = calc_zhang_rubin_bounds_per_x(x=row.x, mu_y_0_x=row.mu0, mu_y_1_x=row.mu1, sigma_0=row.sigma_0,
                                               sigma_1=row.sigma_1, a0=row.a0, b0=row.b0, c0=row.c0, a1=row.a1,
                                               b1=row.b1, c1=row.c1, beta_d=row.beta_d, pi_h_len_grid_search=5)
 
-        list_of_bounds.append(bound)
-    return list_of_bounds
+        zhang_rubin_analytic_bounds.append(bound_per_x)
+    return list(zip(*zhang_rubin_analytic_bounds))
