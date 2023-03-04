@@ -6,9 +6,8 @@ max_features = 1 # max_features must be in (0, n_features]
 min_samples_leaf = 10
 class KernelSuperquantileRegressor:
 
-    def __init__(self, kernel, tau, tail='left'):
+    def __init__(self, kernel, tail='left'):
         self.kernel = kernel
-        self.tau = tau
         if tail not in ["left", "right"]:
             raise ValueError(
                 f"The 'tail' parameter can only take values in ['left', 'right']. Got '{tail}' instead.")
@@ -20,16 +19,16 @@ class KernelSuperquantileRegressor:
         self.kernel.fit(X[self.sorted_Y_idx], Y[self.sorted_Y_idx])
         return self
 
-    def predict(self, X):
+    def predict(self, X, X_tau):
         preds = np.empty(X.shape[0])
         sorted_weights = self.kernel.predict(X)
-        for i, x in enumerate(X):
+        for i, (x, tau) in enumerate(zip(X,X_tau)):
             if self.tail == "right":
-                idx_tail = np.where((np.cumsum(sorted_weights[i]) >= self.tau) == True)[0]
-                preds[i] = np.sum(self.sorted_Y[idx_tail] * sorted_weights[i][idx_tail]) / (1 - self.tau)
+                idx_tail = np.where((np.cumsum(sorted_weights[i]) >= tau) == True)[0]
+                preds[i] = np.sum(self.sorted_Y[idx_tail] * sorted_weights[i][idx_tail]) / (1 - tau)
             else:
-                idx_tail = np.where((np.cumsum(sorted_weights[i]) <= self.tau) == True)[0]
-                preds[i] = np.sum(self.sorted_Y[idx_tail] * sorted_weights[i][idx_tail]) / self.tau
+                idx_tail = np.where((np.cumsum(sorted_weights[i]) <= tau) == True)[0]
+                preds[i] = np.sum(self.sorted_Y[idx_tail] * sorted_weights[i][idx_tail]) / tau
         return preds
 
 

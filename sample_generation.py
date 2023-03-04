@@ -52,6 +52,9 @@ def create_sample(x_dist: Union[GaussianDist, UniformDist, float] = x_dist_defau
     variables_dict['D0'] = BernoulliDist(n=population_size, param={'p': D0_prob}).sampled_vector
     variables_dict['D1'] = BernoulliDist(n=population_size, param={'p': D1_prob}).sampled_vector
 
+    variables_dict['p_t0d0_x'] = 1 - np.array(D0_prob)
+    variables_dict['p_t1d0_x'] = 1 - np.array(D1_prob)
+
     variables_dict['stratum'] = [get_strata(d0, d1).name for d0, d1 in zip(variables_dict['D0'], variables_dict['D1'])]
 
     variables_dict['S1'] = [1 if s == Strata.AS.name else 0 if s == Strata.P.name else None for s in

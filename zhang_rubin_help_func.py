@@ -323,11 +323,12 @@ def calc_zhang_rubin_bounds_using_cvar_est(df: pd.DataFrame, pi_h_len_grid_searc
 
         # TODO re-considerate our train and predict data set. Currently only survivors. Is that the right way?
 
+        df_survivors = df.loc[(df.D_obs==0)].copy()
+
         # Y_obs_1
-        X = np.array(df.x.loc[(df.t==1)&(df.D_obs==0)]).reshape(-1, 1) # X should be of shape (n_samples, n_features). Since X is currently 1D -> #2 dimension set to be 1
-        Y = np.array(df.Y_obs.loc[(df.t==1)&(df.D_obs==0)])
-
-
+        df_obs_1 = df_survivors.loc[(df.t==1)].copy()
+        X = np.array(df_obs_1.x).reshape(-1, 1) # X should be of shape (n_samples, n_features). Since X is currently 1D -> #2 dimension set to be 1
+        Y = np.array(df_obs_1.Y_obs)
 
         superquantile_model = KernelSuperquantileRegressor(
             kernel=RFKernel(
@@ -338,11 +339,12 @@ def calc_zhang_rubin_bounds_using_cvar_est(df: pd.DataFrame, pi_h_len_grid_searc
                     min_samples_leaf=min_samples_leaf,
                     n_jobs=-2)
             ),
-            tau=p_t0d0/p_t1d0-pi_h/p_t1d0,
             tail='left')
 
         trained_superquantile_model = superquantile_model.fit(X, Y)
-        lb_frst_argmt_per_x = trained_superquantile_model.predict(np.array(df.x.loc[(df.D_obs==0)]).reshape(-1, 1))
+
+        X_tau = np.array(df_survivors.p_t0d0_x / df_survivors.p_t1d0_x - pi_h / df_survivors.p_t1d0_x)
+        lb_frst_argmt_per_x = trained_superquantile_model.predict((np.array(df_survivors.x).reshape(-1, 1)), X_tau)
 
         superquantile_model = KernelSuperquantileRegressor(
             kernel=RFKernel(
@@ -353,15 +355,17 @@ def calc_zhang_rubin_bounds_using_cvar_est(df: pd.DataFrame, pi_h_len_grid_searc
                     min_samples_leaf=min_samples_leaf,
                     n_jobs=-2)
             ),
-            tau=1-p_t0d0/p_t1d0+pi_h/p_t1d0,
             tail='right')
 
         trained_superquantile_model = superquantile_model.fit(X, Y)
-        ub_frst_argmt_per_x = trained_superquantile_model.predict(np.array(df.x.loc[(df.D_obs==0)]).reshape(-1, 1))
+
+        X_tau = 1- np.array(df_survivors.p_t0d0_x / df_survivors.p_t1d0_x) + np.array(pi_h / df_survivors.p_t1d0_x)
+        ub_frst_argmt_per_x = trained_superquantile_model.predict(np.array(df_survivors.x).reshape(-1, 1), X_tau)
 
         # Y_obs_0
-        X = np.array(df.x.loc[(df.t==0)&(df.D_obs==0)]).reshape(-1, 1) # X should be of shape (n_samples, n_features). Since X is currently 1D -> #2 dimension set to be 1
-        Y = np.array(df.Y_obs.loc[(df.t==0)&(df.D_obs==0)])
+        df_obs_0 = df_survivors.loc[(df.t == 0)].copy()
+        X = np.array(df_obs_0.x).reshape(-1, 1) # X should be of shape (n_samples, n_features). Since X is currently 1D -> #2 dimension set to be 1
+        Y = np.array(df_obs_0.Y_obs)
 
         superquantile_model = KernelSuperquantileRegressor(
             kernel=RFKernel(
@@ -372,11 +376,12 @@ def calc_zhang_rubin_bounds_using_cvar_est(df: pd.DataFrame, pi_h_len_grid_searc
                     min_samples_leaf=min_samples_leaf,
                     n_jobs=-2)
             ),
-            tau=pi_h/p_t1d0,
             tail='right')
 
         trained_superquantile_model = superquantile_model.fit(X, Y)
-        lb_scnd_argmt_per_x = trained_superquantile_model.predict(np.array(df.x.loc[(df.D_obs==0)]).reshape(-1, 1))
+
+        X_tau = np.array(pi_h / df_survivors.p_t1d0_x)
+        lb_scnd_argmt_per_x = trained_superquantile_model.predict(np.array(df_survivors.x).reshape(-1, 1), X_tau)
 
         superquantile_model = KernelSuperquantileRegressor(
             kernel=RFKernel(
@@ -387,11 +392,12 @@ def calc_zhang_rubin_bounds_using_cvar_est(df: pd.DataFrame, pi_h_len_grid_searc
                     min_samples_leaf=min_samples_leaf,
                     n_jobs=-2)
             ),
-            tau=1-pi_h/p_t1d0,
             tail='left')
 
         trained_superquantile_model = superquantile_model.fit(X, Y)
-        ub_scnd_argmt_per_x = trained_superquantile_model.predict(np.array(df.x.loc[(df.D_obs==0)]).reshape(-1, 1))
+
+        X_tau = 1- np.array(pi_h / df_survivors.p_t1d0_x)
+        ub_scnd_argmt_per_x = trained_superquantile_model.predict(np.array(df_survivors.x).reshape(-1, 1), X_tau)
 
 
         zhang_rubin_lb = lb_frst_argmt_per_x - lb_scnd_argmt_per_x
