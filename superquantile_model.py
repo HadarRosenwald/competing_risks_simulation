@@ -6,12 +6,8 @@ max_features = 1 # max_features must be in (0, n_features]
 min_samples_leaf = 10
 class KernelSuperquantileRegressor:
 
-    def __init__(self, kernel, tail='left'):
+    def __init__(self, kernel):
         self.kernel = kernel
-        if tail not in ["left", "right"]:
-            raise ValueError(
-                f"The 'tail' parameter can only take values in ['left', 'right']. Got '{tail}' instead.")
-        self.tail = tail
 
     def fit(self, X, Y):
         self.sorted_Y_idx = np.argsort(Y)
@@ -19,11 +15,16 @@ class KernelSuperquantileRegressor:
         self.kernel.fit(X[self.sorted_Y_idx], Y[self.sorted_Y_idx])
         return self
 
-    def predict(self, X, X_tau):
+    def predict(self, X, X_tau, tail='left'):
+
+        if tail not in ["left", "right"]:
+            raise ValueError(
+                f"The 'tail' parameter can only take values in ['left', 'right']. Got '{tail}' instead.")
+
         preds = np.empty(X.shape[0])
         sorted_weights = self.kernel.predict(X)
         for i, (x, tau) in enumerate(zip(X,X_tau)):
-            if self.tail == "right":
+            if tail == "right":
                 idx_tail = np.where((np.cumsum(sorted_weights[i]) >= tau) == True)[0]
                 preds[i] = np.sum(self.sorted_Y[idx_tail] * sorted_weights[i][idx_tail]) / (1 - tau)
             else:
