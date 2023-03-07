@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Tuple
 import pandas as pd
 from consts import *
 from distributions import *
@@ -27,6 +27,22 @@ def generate_mu0_mu1(y0_dist_param: Dict[str, float],
     return mu0, mu1
 
 
+def calc_death_array_and_proba(x: np.array, beta_d,
+                               omega: float = omega_default) -> Tuple[np.array, np.array, np.array, np.array]:
+    D0_prob = [(1 / (1 + np.exp(-omega * (beta_d[0] + beta_d[1] * 0 + beta_d[2] * x[i])))) for i in
+               range(0, x.size)]
+    D1_prob = [(1 / (1 + np.exp(-omega * (beta_d[0] + beta_d[1] * 1 + beta_d[2] * x[i])))) for i in
+               range(0, x.size)]
+
+    D0 = BernoulliDist(n=x.size, param={'p': D0_prob}).sampled_vector
+    D1 = BernoulliDist(n=x.size, param={'p': D1_prob}).sampled_vector
+
+    p_t0d0_x = 1 - np.array(D0_prob)
+    p_t1d0_x = 1 - np.array(D1_prob)
+
+    return D0, D1, p_t0d0_x, p_t1d0_x
+
+
 def create_sample(x_dist: Union[GaussianDist, UniformDist, float] = x_dist_default,
                   y0_dist_param: Dict[str, float] = y0_dist_param_default,
                   y1_dist_param: Dict[str, float] = y1_dist_param_default,
@@ -45,15 +61,11 @@ def create_sample(x_dist: Union[GaussianDist, UniformDist, float] = x_dist_defau
 
     variables_dict['t'] = BernoulliDist(n=population_size, param={'p': treatment_prob}).sampled_vector
 
-    D0_prob = [(1 / (1 + np.exp(-omega * (beta_d[0] + beta_d[1] * 0 + beta_d[2] * variables_dict['x'][i])))) for i in
-               range(0, population_size)]
-    D1_prob = [(1 / (1 + np.exp(-omega * (beta_d[0] + beta_d[1] * 1 + beta_d[2] * variables_dict['x'][i])))) for i in
-               range(0, population_size)]
-    variables_dict['D0'] = BernoulliDist(n=population_size, param={'p': D0_prob}).sampled_vector
-    variables_dict['D1'] = BernoulliDist(n=population_size, param={'p': D1_prob}).sampled_vector
-
-    variables_dict['p_t0d0_x'] = 1 - np.array(D0_prob)
-    variables_dict['p_t1d0_x'] = 1 - np.array(D1_prob)
+    D0, D1, p_t0d0_x, p_t1d0_x = calc_death_array_and_proba(variables_dict['x'], beta_d, omega)
+    variables_dict['D0'] = D0
+    variables_dict['D1'] = D1
+    variables_dict['p_t0d0_x'] = p_t0d0_x
+    variables_dict['p_t1d0_x'] = p_t1d0_x
 
     variables_dict['stratum'] = [get_strata(d0, d1).name for d0, d1 in zip(variables_dict['D0'], variables_dict['D1'])]
 
