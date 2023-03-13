@@ -311,14 +311,19 @@ def calc_zhang_rubin_bounds_per_x(
 
 
 def calc_zhang_rubin_bounds_using_cvar_est(df: pd.DataFrame, pi_h_len_grid_search: int = 5) -> Tuple[np.array, np.array]:
-    p_t0d0, p_t1d0 = calc_non_parametric_p_t0d0_p_t1d0(df)
-    lower_pi = max(0.0, p_t0d0 - p_t1d0)
-    upper_pi = min(p_t0d0, 1 - p_t1d0)
-    pi_h_list = np.linspace(lower_pi, upper_pi, num=pi_h_len_grid_search)
+    # TODO re-considerate our train and predict data set. Currently only survivors. Is that the right way?
 
-    # bounds
-    zhang_rubin_lb_results = []
-    zhang_rubin_ub_results = []
+    df_survivors = df.loc[(df.D_obs==0)].copy()
+
+    lower_pi_x = np.maximum(np.zeros(df_survivors.shape[0]), np.array(df_survivors.p_t0d0_x - df_survivors.p_t1d0_x))
+    upper_pi_x = np.minimum(np.array(df_survivors.p_t0d0_x), 1 - np.array(df_survivors.p_t1d0_x))
+    pi_h_grid_search_per_x = np.array([np.linspace(lower, upper, num=pi_h_len_grid_search) for lower, upper in zip(lower_pi_x, upper_pi_x)])
+    # pi_h_grid_search_per_x holds a row per x with the grid values for pi_h (first is the lower bound pi_h, last is the upper bound pi_h, everything in between is the grid)
+    grid_search_lb_frst_argmt_per_x = list()
+    grid_search_lb_scnd_argmt_per_x = list()
+    grid_search_ub_frst_argmt_per_x = list()
+    grid_search_ub_scnd_argmt_per_x = list()
+
 
     superquantile_model = KernelSuperquantileRegressor(
         kernel=RFKernel(
@@ -330,48 +335,46 @@ def calc_zhang_rubin_bounds_using_cvar_est(df: pd.DataFrame, pi_h_len_grid_searc
                 n_jobs=-2)
         ))
 
-    for pi_h in pi_h_list:
+    # Y_obs_1
+    df_obs_1 = df_survivors.loc[(df.t==1)].copy()
+    X = np.array(df_obs_1.x).reshape(-1, 1) # X should be of shape (n_samples, n_features). Since X is currently 1D -> #2 dimension set to be 1
+    Y = np.array(df_obs_1.Y_obs)
 
-        # TODO re-considerate our train and predict data set. Currently only survivors. Is that the right way?
+    trained_superquantile_model = superquantile_model.fit(X, Y)
 
-        df_survivors = df.loc[(df.D_obs==0)].copy()
-
-        # Y_obs_1
-        df_obs_1 = df_survivors.loc[(df.t==1)].copy()
-        X = np.array(df_obs_1.x).reshape(-1, 1) # X should be of shape (n_samples, n_features). Since X is currently 1D -> #2 dimension set to be 1
-        Y = np.array(df_obs_1.Y_obs)
-
-        trained_superquantile_model = superquantile_model.fit(X, Y)
-
+    for pi_h in pi_h_grid_search_per_x.T:
         X_tau = np.array(df_survivors.p_t0d0_x / df_survivors.p_t1d0_x - pi_h / df_survivors.p_t1d0_x)
         lb_frst_argmt_per_x = trained_superquantile_model.predict((np.array(df_survivors.x).reshape(-1, 1)), X_tau, tail='left')
+        grid_search_lb_frst_argmt_per_x.append(lb_frst_argmt_per_x)
 
+    for pi_h in pi_h_grid_search_per_x.T:
         X_tau = 1- np.array(df_survivors.p_t0d0_x / df_survivors.p_t1d0_x) + np.array(pi_h / df_survivors.p_t1d0_x)
         ub_frst_argmt_per_x = trained_superquantile_model.predict(np.array(df_survivors.x).reshape(-1, 1), X_tau, tail='right')
+        grid_search_ub_frst_argmt_per_x.append(ub_frst_argmt_per_x)
 
-        # Y_obs_0
-        df_obs_0 = df_survivors.loc[(df.t == 0)].copy()
-        X = np.array(df_obs_0.x).reshape(-1, 1) # X should be of shape (n_samples, n_features). Since X is currently 1D -> #2 dimension set to be 1
-        Y = np.array(df_obs_0.Y_obs)
+    # Y_obs_0
+    df_obs_0 = df_survivors.loc[(df.t == 0)].copy()
+    X = np.array(df_obs_0.x).reshape(-1, 1) # X should be of shape (n_samples, n_features). Since X is currently 1D -> #2 dimension set to be 1
+    Y = np.array(df_obs_0.Y_obs)
 
-        trained_superquantile_model = superquantile_model.fit(X, Y)
+    trained_superquantile_model = superquantile_model.fit(X, Y)
 
+    for pi_h in pi_h_grid_search_per_x.T:
         X_tau = np.array(pi_h / df_survivors.p_t1d0_x)
         lb_scnd_argmt_per_x = trained_superquantile_model.predict(np.array(df_survivors.x).reshape(-1, 1), X_tau, tail='right')
+        grid_search_lb_scnd_argmt_per_x.append(lb_scnd_argmt_per_x)
 
-
+    for pi_h in pi_h_grid_search_per_x.T:
         X_tau = 1- np.array(pi_h / df_survivors.p_t1d0_x)
         ub_scnd_argmt_per_x = trained_superquantile_model.predict(np.array(df_survivors.x).reshape(-1, 1), X_tau, tail='left')
+        grid_search_ub_scnd_argmt_per_x.append(ub_scnd_argmt_per_x)
 
 
-        zhang_rubin_lb = lb_frst_argmt_per_x - lb_scnd_argmt_per_x
-        zhang_rubin_ub = ub_frst_argmt_per_x - ub_scnd_argmt_per_x
+    zhang_rubin_lb_results = np.array(grid_search_lb_frst_argmt_per_x) - np.array(grid_search_lb_scnd_argmt_per_x)
+    zhang_rubin_ub_results = np.array(grid_search_ub_frst_argmt_per_x) - np.array(grid_search_ub_scnd_argmt_per_x)
 
-        zhang_rubin_lb_results.append(zhang_rubin_lb)
-        zhang_rubin_ub_results.append(zhang_rubin_ub)
-
-    zhang_rubin_lb = np.array(zhang_rubin_lb_results).min(axis=0) #TODO - zhang_rubin_lb_results is a matrix of #pi rows and #x column. Here we take the min result per x (it can be different pi's for different x's. Is that ok?)
-    zhang_rubin_ub = np.array(zhang_rubin_ub_results).max(axis=0)
+    zhang_rubin_lb = zhang_rubin_lb_results.min(axis=0)
+    zhang_rubin_ub = zhang_rubin_ub_results.max(axis=0)
 
     return (zhang_rubin_lb, zhang_rubin_ub)
 
