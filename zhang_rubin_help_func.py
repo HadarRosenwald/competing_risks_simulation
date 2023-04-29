@@ -199,12 +199,12 @@ def calc_zhang_rubin_bounds_per_x(
         mu_1_p = a1 + b1 * x
         mu_1_as = mu_1_p + c1
         # QUESTION: Where do we account for the fact that this x resulted in EITHER AS or P? we don't have another x like this with the opposite strata. We are taking weighted average but where does the probability of being AS/P - in terms of Beta - is addressed?
-        weight = 1 - p_t0d0 / p_t1d0 + pi_h / p_t1d0
+        one_minus_alpha = 1 - p_t0d0 / p_t1d0 + pi_h / p_t1d0
         m = GaussianMixtureDistribution([stats.norm(loc=mu_1_p, scale=sigma_1), stats.norm(loc=mu_1_as, scale=sigma_1)],
-                                        [weight, 1 - weight])
+                                        [one_minus_alpha, 1 - one_minus_alpha])
 
         ppf_0 = m.ppf(0)
-        ppf_1_minus_weight = m.ppf(1 - weight)
+        ppf_1_minus_weight = m.ppf(1 - one_minus_alpha)
         lb_frst_argmt_integral_p = calculate_integral(
             func=integrand_func(sigma_1, mu_1_p),
             lb_integration=ppf_0,
@@ -219,9 +219,9 @@ def calc_zhang_rubin_bounds_per_x(
         if lb_frst_argmt_integral_p==lb_frst_argmt_integral_as==0:
             lb_frst_argmt_integral=0
         else:
-            lb_frst_argmt_integral = weight * (1/(1 - weight)) * lb_frst_argmt_integral_p + (1 - weight) * (1/(1 - weight)) * lb_frst_argmt_integral_as
+            lb_frst_argmt_integral = one_minus_alpha * (1/(1 - one_minus_alpha)) * lb_frst_argmt_integral_p + (1 - one_minus_alpha) * (1/(1 - one_minus_alpha)) * lb_frst_argmt_integral_as
 
-        ppf_weight = m.ppf(weight)
+        ppf_weight = m.ppf(one_minus_alpha)
         ppf_1 = m.ppf(1)
         ub_frst_argmt_integral_p = calculate_integral(
             func=integrand_func(sigma_1, mu_1_p),
@@ -237,51 +237,51 @@ def calc_zhang_rubin_bounds_per_x(
         if ub_frst_argmt_integral_p==ub_frst_argmt_integral_as==0:
             ub_frst_argmt_integral=0
         else:
-            ub_frst_argmt_integral = weight * (1/(1 - weight)) * ub_frst_argmt_integral_p + (1 - weight) * (1/(1 - weight)) * ub_frst_argmt_integral_as
+            ub_frst_argmt_integral = one_minus_alpha * (1/(1 - one_minus_alpha)) * ub_frst_argmt_integral_p + (1 - one_minus_alpha) * (1/(1 - one_minus_alpha)) * ub_frst_argmt_integral_as
 
         # Y0
         mu_0_h = a0 + b0 * x
         mu_0_as = mu_0_h + c0
         # QUESTION: Where do we account for the fact that this x resulted in EITHER AS or H? we don't have another x like this with the opposite strata. We are taking weighted average but where does the probability of being AS/P - in terms of Beta - is addressed?
-        weight = pi_h / p_t0d0
+        one_minus_alpha = pi_h / p_t0d0
         m = GaussianMixtureDistribution([stats.norm(loc=mu_0_h, scale=sigma_0), stats.norm(loc=mu_0_as, scale=sigma_0)],
-                                        [weight, 1 - weight])
+                                        [one_minus_alpha, 1 - one_minus_alpha])
 
-        ppf_pih_t1t0 = m.ppf(pi_h / p_t1d0)
+        ppf_weight = m.ppf(one_minus_alpha)
         ppf_1 = m.ppf(1)
         lb_scnd_argmt_integral_h = calculate_integral(
             func=integrand_func(sigma_0, mu_0_h),
-            lb_integration=ppf_pih_t1t0,
+            lb_integration=ppf_weight,
             ub_integration=ppf_1
         )
         lb_scnd_argmt_integral_as = calculate_integral(
             func=integrand_func(sigma_0, mu_0_as),
-            lb_integration=ppf_pih_t1t0,
+            lb_integration=ppf_weight,
             ub_integration=ppf_1
         )
 
         if lb_scnd_argmt_integral_h== lb_scnd_argmt_integral_as==0:
             lb_scnd_argmt_integral=0
         else:
-            lb_scnd_argmt_integral = weight * (1/(1 - pi_h / p_t1d0)) * lb_scnd_argmt_integral_h + (1 - weight) * (1/(1 - pi_h / p_t1d0)) * lb_scnd_argmt_integral_as
+            lb_scnd_argmt_integral = one_minus_alpha * (1/(1 - one_minus_alpha)) * lb_scnd_argmt_integral_h + (1 - one_minus_alpha) * (1/(1 - one_minus_alpha)) * lb_scnd_argmt_integral_as
 
         ppf_0 = m.ppf(0)
-        ppf_1_minus_pih_t1t0 = m.ppf(1 - pi_h / p_t1d0)
+        ppf_1_minus_weight = m.ppf(1 - one_minus_alpha)
         ub_scnd_argmt_integral_h = calculate_integral(
             func=integrand_func(sigma_0, mu_0_h),
             lb_integration=ppf_0,
-            ub_integration=ppf_1_minus_pih_t1t0
+            ub_integration=ppf_1_minus_weight
         )
         ub_scnd_argmt_integral_as = calculate_integral(
             func=integrand_func(sigma_0, mu_0_as),
             lb_integration=ppf_0,
-            ub_integration=ppf_1_minus_pih_t1t0
+            ub_integration=ppf_1_minus_weight
         )
 
         if ub_scnd_argmt_integral_h==ub_scnd_argmt_integral_as==0:
             ub_scnd_argmt_integral=0
         else:
-            ub_scnd_argmt_integral = weight * (1/(1 - pi_h / p_t1d0)) * ub_scnd_argmt_integral_h + (1 - weight) * (1/(1 - pi_h / p_t1d0)) * ub_scnd_argmt_integral_as
+            ub_scnd_argmt_integral = one_minus_alpha * (1/(1 - one_minus_alpha)) * ub_scnd_argmt_integral_h + (1 - one_minus_alpha) * (1/(1 - one_minus_alpha)) * ub_scnd_argmt_integral_as
 
         zhang_rubin_lb = lb_frst_argmt_integral - lb_scnd_argmt_integral
         zhang_rubin_ub = ub_frst_argmt_integral - ub_scnd_argmt_integral
@@ -360,12 +360,12 @@ def calc_zhang_rubin_bounds_using_cvar_est(df: pd.DataFrame, pi_h_len_grid_searc
     trained_superquantile_model = superquantile_model.fit(X, Y)
 
     for pi_h in pi_h_grid_search_per_x.T:
-        X_tau = np.array(pi_h / df_survivors.p_t1d0_x)
+        X_tau = np.array(pi_h / df_survivors.p_t0d0_x)
         lb_scnd_argmt_per_x = trained_superquantile_model.predict(np.array(df_survivors.x).reshape(-1, 1), X_tau, tail='right')
         grid_search_lb_scnd_argmt_per_x.append(lb_scnd_argmt_per_x)
 
     for pi_h in pi_h_grid_search_per_x.T:
-        X_tau = 1- np.array(pi_h / df_survivors.p_t1d0_x)
+        X_tau = 1- np.array(pi_h / df_survivors.p_t0d0_x)
         ub_scnd_argmt_per_x = trained_superquantile_model.predict(np.array(df_survivors.x).reshape(-1, 1), X_tau, tail='left')
         grid_search_ub_scnd_argmt_per_x.append(ub_scnd_argmt_per_x)
 
