@@ -1,3 +1,5 @@
+from estimations import estimate_beta_d_from_realizations
+
 from typing import List, Tuple
 import pandas as pd
 from consts import *
@@ -27,12 +29,18 @@ def generate_mu0_mu1(y0_dist_param: Dict[str, float],
     return mu0, mu1
 
 
+def calculate_probability(omega, beta, x_row, t):
+    bias = beta[0] + beta[1] * t
+    x_row = np.array(x_row, ndmin=1)  # Ensures x_row is at least 1D
+    weighted_features = sum(beta[i+2] * x_value for i, x_value in enumerate(x_row))
+    logit = bias + weighted_features
+    return 1 / (1 + np.exp(-omega * logit))
+
+
 def calc_death_array_and_proba(x: np.array, beta_d,
                                omega: float = omega_default) -> Tuple[np.array, np.array, np.array, np.array]:
-    D0_prob = [(1 / (1 + np.exp(-omega * (beta_d[0] + beta_d[1] * 0 + beta_d[2] * x[i])))) for i in
-               range(0, x.size)]
-    D1_prob = [(1 / (1 + np.exp(-omega * (beta_d[0] + beta_d[1] * 1 + beta_d[2] * x[i])))) for i in
-               range(0, x.size)]
+    D0_prob = [calculate_probability(omega, beta_d, x[i], t=0) for i in range(len(x))]
+    D1_prob = [calculate_probability(omega, beta_d, x[i], t=1) for i in range(len(x))]
 
     D0 = BernoulliDist(n=x.size, param={'p': D0_prob}).sampled_vector
     D1 = BernoulliDist(n=x.size, param={'p': D1_prob}).sampled_vector
@@ -59,7 +67,7 @@ def create_sample(x_dist: Union[GaussianDist, UniformDist, float] = x_dist_defau
     else:
         variables_dict['x'] = np.full((population_size), x_dist)
 
-    variables_dict['t'] = BernoulliDist(n=population_size, param={'p': treatment_prob}).sampled_vector
+    variables_dict['t'] = BernoulliDist(n=population_size, param={'p': treatment_prob}) .sampled_vector
 
     D0, D1, p_t0d0_x, p_t1d0_x = calc_death_array_and_proba(variables_dict['x'], beta_d, omega)
     variables_dict['D0'] = D0
@@ -99,3 +107,39 @@ def create_sample(x_dist: Union[GaussianDist, UniformDist, float] = x_dist_defau
     variables_dict['c1'] = y1_dist_param['c1']
 
     return pd.DataFrame.from_dict(variables_dict)
+
+
+def data_adjustments(dataset: str) -> pd.DataFrame:
+    if dataset != 'lalonde':
+        # Placeholder for other RWD sources
+        return None
+    else:
+        control = pd.read_table('nsw_control.txt', header=None,
+                                names=['t', 'age', 'educ', 'black', 'hispan', 'married', 'nodegree', 're75', 're78'],
+                                sep='\s+')
+        treated = pd.read_table('nsw_treated.txt', header=None,
+                                names=['t', 'age', 'educ', 'black', 'hispan', 'married', 'nodegree', 're75', 're78'],
+                                sep='\s+')
+        df = pd.concat([control, treated], ignore_index=True)
+        df_adjusted = pd.DataFrame(data={
+            'x': df[['age', 'educ', 'black', 'hispan', 'married', 'nodegree', 're75']].values.tolist(),
+            't': df.t.values.tolist(),
+            'D_obs': df['re78'].apply(lambda D_obs: 1 if D_obs == 0 else 0).tolist(),
+            'Y_obs': df['re78'].apply(lambda Y_obs: None if Y_obs == 0 else Y_obs).tolist(),
+        })
+    return df_adjusted
+
+
+def adjust_data_with_beta_estimations(df):
+    beta_d_hat = estimate_beta_d_from_realizations(
+        true_beta_d_for_comparison=df.iloc[0].beta_d if 'beta_d' in df.columns else None,
+        t=df.t.values,
+        x=df.x.values,
+        d_obs=df.D_obs.values
+    )
+
+    _, _, p_t0d0_x_hat, p_t1d0_x_hat = calc_death_array_and_proba(df.x.values, beta_d_hat)
+    adjusted_df = df[['x','D_obs','Y_obs','t']].copy()
+    adjusted_df['p_t0d0_x'] = p_t0d0_x_hat
+    adjusted_df['p_t1d0_x'] = p_t1d0_x_hat
+    return adjusted_df

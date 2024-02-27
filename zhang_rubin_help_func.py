@@ -28,8 +28,8 @@ def calc_non_parametric_p_t0d0_p_t1d0(df: pd.DataFrame) -> Tuple[float, float]:
 
 
 def get_y_0_obs_y_1_obs(df: pd.DataFrame) -> Tuple[float, float]:
-    y_0_obs = df.loc[df.t == 0]['Y0'].dropna()
-    y_1_obs = df.loc[df.t == 1]['Y1'].dropna()
+    y_0_obs = df.loc[df.t == 0]['Y_obs'].dropna()
+    y_1_obs = df.loc[df.t == 1]['Y_obs'].dropna()
     return y_0_obs, y_1_obs
 
 
@@ -136,17 +136,19 @@ def plot_pi_h_and_bounds(pi_h: List[float], zhang_rubin_lb: List[float], zhang_r
 def plot_zhang_rubin_bounds_on_survivors(df: pd.DataFrame, zhang_rubin_bounds: List[Tuple[float, float]],
                                          y0_dist_param: Dict[str, float] = y0_dist_param_default,
                                          y1_dist_param: Dict[str, float] = y1_dist_param_default):
-    df_plot_as = df.loc[df.stratum == Strata.AS.name]
-    plt.scatter(df_plot_as.x, (df_plot_as.Y1 - df_plot_as.Y0), label="True Y1 - Y0|AS", s=0.1)
+    if 'stratum' in df.columns:
+        df_plot_as = df.loc[df.stratum == Strata.AS.name]
+        plt.scatter(df_plot_as.x, (df_plot_as.Y1 - df_plot_as.Y0), label="True Y1 - Y0|AS", s=0.1)
 
-    mu_y_0_x = df.mu0
-    mu_y_1_x = df.mu1
+        mu_y_0_x = df.mu0
+        mu_y_1_x = df.mu1
 
     lb, up = zhang_rubin_bounds
     # print(f"lower bound: {lb}, upper bound: {up}, true value: {mu_y_1_x - mu_y_0_x}")
-    plt.scatter(list(df.x), lb, label="Lower bound", s=0.1)
-    plt.scatter(list(df.x), up, label="Upper bound", s=0.1)
-    plt.scatter(list(df.x), mu_y_1_x - mu_y_0_x, label=r'$\mu_{y(1)|x}-\mu_{y(0)|x}$', s=0.1)
+    plt.scatter([np.mean(inner_list) for inner_list in df.x] if isinstance(df.x.iloc[0], list) else list(df.x), lb, label="Lower bound", s=0.1)
+    plt.scatter([np.mean(inner_list) for inner_list in df.x] if isinstance(df.x.iloc[0], list) else list(df.x), up, label="Upper bound", s=0.1)
+    if 'stratum' in df.columns:
+        plt.scatter([np.mean(inner_list) for inner_list in df.x] if isinstance(df.x.iloc[0], list) else list(df.x), mu_y_1_x - mu_y_0_x, label=r'$\mu_{y(1)|x}-\mu_{y(0)|x}$', s=0.1)
 
     plt.legend(markerscale=12)
     # plt.legend()
@@ -155,7 +157,7 @@ def plot_zhang_rubin_bounds_on_survivors(df: pd.DataFrame, zhang_rubin_bounds: L
     plt.ylabel('Y1-Y0|AS bounds')
     plt.ylim((min(-3, min(lb)), max(3, max(up))))
     plt.show()
-    return {'x':df.x, 'lb': lb, 'up': up, 'true value': mu_y_1_x - mu_y_0_x}
+    return {'x':df.x, 'lb': lb, 'up': up, 'true value': mu_y_1_x - mu_y_0_x if 'stratum' in df.columns else None}
 
 
 ################# zhang and rubin parametric bounds ########################
@@ -310,10 +312,15 @@ def calc_zhang_rubin_bounds_per_x(
     return (zhang_rubin_lb, zhang_rubin_ub)
 
 
+def x_reshape(x, n_features):
+    # X should be of shape (n_samples, n_features). If X is a scalar -> #2 dimension set to be 1
+    return np.stack(x.values) if n_features > 1 else np.array(x).reshape(-1, 1)
+
 def calc_zhang_rubin_bounds_using_cvar_est(df: pd.DataFrame, pi_h_len_grid_search: int = 5) -> Tuple[np.array, np.array]:
     # TODO re-considerate our train and predict data set. Currently only survivors. Is that the right way?
 
     df_survivors = df.loc[(df.D_obs==0)].copy()
+    n_features = np.size(df.x[0])
 
     lower_pi_x = np.maximum(np.zeros(df_survivors.shape[0]), np.array(df_survivors.p_t0d0_x - df_survivors.p_t1d0_x))
     upper_pi_x = np.minimum(np.array(df_survivors.p_t0d0_x), 1 - np.array(df_survivors.p_t1d0_x))
@@ -330,43 +337,43 @@ def calc_zhang_rubin_bounds_using_cvar_est(df: pd.DataFrame, pi_h_len_grid_searc
             RandomForestRegressor(
                 n_estimators=n_estimators,
                 max_depth=max_depth,
-                max_features=max_features,
+                max_features=n_features,
                 min_samples_leaf=min_samples_leaf,
                 n_jobs=-2)
         ))
 
     # Y_obs_1
-    df_obs_1 = df_survivors.loc[(df.t==1)].copy()
-    X = np.array(df_obs_1.x).reshape(-1, 1) # X should be of shape (n_samples, n_features). Since X is currently 1D -> #2 dimension set to be 1
+    df_obs_1 = df_survivors.loc[(df.t == 1)].copy()
+    X = x_reshape(df_obs_1.x, n_features)
     Y = np.array(df_obs_1.Y_obs)
 
     trained_superquantile_model = superquantile_model.fit(X, Y)
 
     for pi_h in pi_h_grid_search_per_x.T:
         X_tau = np.array(df_survivors.p_t0d0_x / df_survivors.p_t1d0_x - pi_h / df_survivors.p_t1d0_x)
-        lb_frst_argmt_per_x = trained_superquantile_model.predict((np.array(df_survivors.x).reshape(-1, 1)), X_tau, tail='left')
+        lb_frst_argmt_per_x = trained_superquantile_model.predict(x_reshape(df_survivors.x, n_features), X_tau, tail='left')
         grid_search_lb_frst_argmt_per_x.append(lb_frst_argmt_per_x)
 
     for pi_h in pi_h_grid_search_per_x.T:
         X_tau = 1- np.array(df_survivors.p_t0d0_x / df_survivors.p_t1d0_x) + np.array(pi_h / df_survivors.p_t1d0_x)
-        ub_frst_argmt_per_x = trained_superquantile_model.predict(np.array(df_survivors.x).reshape(-1, 1), X_tau, tail='right')
+        ub_frst_argmt_per_x = trained_superquantile_model.predict(x_reshape(df_survivors.x, n_features), X_tau, tail='right')
         grid_search_ub_frst_argmt_per_x.append(ub_frst_argmt_per_x)
 
     # Y_obs_0
     df_obs_0 = df_survivors.loc[(df.t == 0)].copy()
-    X = np.array(df_obs_0.x).reshape(-1, 1) # X should be of shape (n_samples, n_features). Since X is currently 1D -> #2 dimension set to be 1
+    X = x_reshape(df_obs_0.x, n_features)
     Y = np.array(df_obs_0.Y_obs)
 
     trained_superquantile_model = superquantile_model.fit(X, Y)
 
     for pi_h in pi_h_grid_search_per_x.T:
         X_tau = np.array(pi_h / df_survivors.p_t0d0_x)
-        lb_scnd_argmt_per_x = trained_superquantile_model.predict(np.array(df_survivors.x).reshape(-1, 1), X_tau, tail='right')
+        lb_scnd_argmt_per_x = trained_superquantile_model.predict(x_reshape(df_survivors.x, n_features), X_tau, tail='right')
         grid_search_lb_scnd_argmt_per_x.append(lb_scnd_argmt_per_x)
 
     for pi_h in pi_h_grid_search_per_x.T:
         X_tau = 1- np.array(pi_h / df_survivors.p_t0d0_x)
-        ub_scnd_argmt_per_x = trained_superquantile_model.predict(np.array(df_survivors.x).reshape(-1, 1), X_tau, tail='left')
+        ub_scnd_argmt_per_x = trained_superquantile_model.predict(x_reshape(df_survivors.x, n_features), X_tau, tail='left')
         grid_search_ub_scnd_argmt_per_x.append(ub_scnd_argmt_per_x)
 
 
