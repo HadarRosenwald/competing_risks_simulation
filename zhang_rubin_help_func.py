@@ -316,7 +316,10 @@ def x_reshape(x, n_features):
     # X should be of shape (n_samples, n_features). If X is a scalar -> #2 dimension set to be 1
     return np.stack(x.values) if n_features > 1 else np.array(x).reshape(-1, 1)
 
-def calc_zhang_rubin_bounds_using_cvar_est(df: pd.DataFrame, pi_h_len_grid_search: int = 5) -> Tuple[np.array, np.array]:
+
+def calc_zhang_rubin_bounds_using_cvar_est(df: pd.DataFrame, pi_h_len_grid_search: int = 5,
+                                           monotonicity_assumption: bool = False, ras_assumption: bool = False) -> \
+                                           Tuple[np.array, np.array]:
     # TODO re-considerate our train and predict data set. Currently only survivors. Is that the right way?
 
     df_survivors = df.loc[(df.D_obs==0)].copy()
@@ -350,12 +353,20 @@ def calc_zhang_rubin_bounds_using_cvar_est(df: pd.DataFrame, pi_h_len_grid_searc
     trained_superquantile_model = superquantile_model.fit(X, Y)
 
     for pi_h in pi_h_grid_search_per_x.T:
-        X_tau = np.array(df_survivors.p_t0d0_x / df_survivors.p_t1d0_x - pi_h / df_survivors.p_t1d0_x)
+        if ras_assumption:
+            X_tau = np.ones(len(pi_h))
+        elif monotonicity_assumption:
+            X_tau = np.array(df_survivors.p_t0d0_x / df_survivors.p_t1d0_x)
+        else:
+            X_tau = np.array(df_survivors.p_t0d0_x / df_survivors.p_t1d0_x - pi_h / df_survivors.p_t1d0_x)
         lb_frst_argmt_per_x = trained_superquantile_model.predict(x_reshape(df_survivors.x, n_features), X_tau, tail='left')
         grid_search_lb_frst_argmt_per_x.append(lb_frst_argmt_per_x)
 
     for pi_h in pi_h_grid_search_per_x.T:
-        X_tau = 1- np.array(df_survivors.p_t0d0_x / df_survivors.p_t1d0_x) + np.array(pi_h / df_survivors.p_t1d0_x)
+        if monotonicity_assumption:
+            X_tau = 1 - np.array(df_survivors.p_t0d0_x / df_survivors.p_t1d0_x)
+        else:
+            X_tau = 1 - np.array(df_survivors.p_t0d0_x / df_survivors.p_t1d0_x) + np.array(pi_h / df_survivors.p_t1d0_x)
         ub_frst_argmt_per_x = trained_superquantile_model.predict(x_reshape(df_survivors.x, n_features), X_tau, tail='right')
         grid_search_ub_frst_argmt_per_x.append(ub_frst_argmt_per_x)
 
@@ -367,12 +378,18 @@ def calc_zhang_rubin_bounds_using_cvar_est(df: pd.DataFrame, pi_h_len_grid_searc
     trained_superquantile_model = superquantile_model.fit(X, Y)
 
     for pi_h in pi_h_grid_search_per_x.T:
-        X_tau = np.array(pi_h / df_survivors.p_t0d0_x)
+        if monotonicity_assumption:
+            X_tau = np.zeros(len(pi_h))
+        else:
+            X_tau = np.array(pi_h / df_survivors.p_t0d0_x)
         lb_scnd_argmt_per_x = trained_superquantile_model.predict(x_reshape(df_survivors.x, n_features), X_tau, tail='right')
         grid_search_lb_scnd_argmt_per_x.append(lb_scnd_argmt_per_x)
 
     for pi_h in pi_h_grid_search_per_x.T:
-        X_tau = 1- np.array(pi_h / df_survivors.p_t0d0_x)
+        if monotonicity_assumption or ras_assumption:
+            X_tau = np.ones(len(pi_h))
+        else:
+            X_tau = 1 - np.array(pi_h / df_survivors.p_t0d0_x)
         ub_scnd_argmt_per_x = trained_superquantile_model.predict(x_reshape(df_survivors.x, n_features), X_tau, tail='left')
         grid_search_ub_scnd_argmt_per_x.append(ub_scnd_argmt_per_x)
 
