@@ -5,7 +5,8 @@ import pandas as pd
 from consts import *
 from distributions import *
 from strata import Strata, get_strata
-
+import pyreadstat
+from scipy.stats import skew
 
 def generate_y(mu: List[float], strata: List[Strata], y_dist_param: Dict[str, float], t: int)-> List[Union[float, None]]:
     y = []
@@ -109,11 +110,19 @@ def create_sample(x_dist: Union[GaussianDist, UniformDist, float] = x_dist_defau
     return pd.DataFrame.from_dict(variables_dict)
 
 
+def impute_numeric_column(column):
+    skewness = skew(column.dropna())
+    # If skewness is significant, use median, otherwise mean
+    if abs(skewness) > 0.5:
+        return column.fillna(column.median())
+    else:
+        return column.fillna(column.mean())
+
 def data_adjustments(dataset: str) -> pd.DataFrame:
-    if dataset != 'lalonde':
+    if dataset not in ('lalonde', 'STAR'):
         # Placeholder for other RWD sources
         return None
-    else:
+    elif dataset == 'lalonde':
         control = pd.read_table('nsw_control.txt', header=None,
                                 names=['t', 'age', 'educ', 'black', 'hispan', 'married', 'nodegree', 're75', 're78'],
                                 sep='\s+')
@@ -127,6 +136,47 @@ def data_adjustments(dataset: str) -> pd.DataFrame:
             'D_obs': df['re78'].apply(lambda D_obs: 1 if D_obs == 0 else 0).tolist(),
             'Y_obs': df['re78'].apply(lambda Y_obs: None if Y_obs == 0 else Y_obs).tolist(),
         })
+    elif dataset == 'STAR':
+        df, meta = pyreadstat.read_sav('STAR_Students.sav')
+        dfk = df.loc[(df.FLAGSGK == 1)].copy()
+        dfk['freelunch'] = dfk['gkfreelunch'].apply(lambda x: 1 if x == 1.0 else (0 if not pd.isnull(x) else x))
+        dfk['white'] = dfk['race'].apply(lambda x: 1 if x == 1.0 else (
+            0 if not pd.isnull(x) else x))  # dfk.race.value_counts(dropna=False) <- 4234 white, 2058 black, 33 other
+        dfk['age_in_1985'] = 1985 - dfk['birthyear']
+        dfk['girl'] = dfk['gender'].apply(lambda x: 1 if x == 2.0 else (0 if not pd.isnull(x) else x))
+        dfk['teacher_white'] = dfk['gktrace'].apply(lambda x: 1 if x == 1.0 else (0 if not pd.isnull(x) else x))
+        # 'gktyears'
+        dfk['teacher_master'] = dfk['gkthighdegree'].apply(
+            lambda x: 1 if (not pd.isnull(x) and x > 2.0) else (0 if not pd.isnull(x) else x))
+        dfk['teacher_girl'] = dfk['gktgen'].apply(lambda x: 1 if x == 2.0 else (0 if not pd.isnull(x) else x))
+
+        dfk['t'] = dfk['gkclasstype'].apply(lambda x: 1 if x == 1.0 else (0 if not pd.isnull(x) else x))
+
+        dfk['D'] = (dfk.FLAGSG1 == 0) | dfk[
+            ['g1treadss', 'g1wordskillss', 'g1tmathss', 'g1readbsraw', 'g1mathbsraw']].isnull().all(axis=1).astype(int)
+
+        dfk['avg_percentile'] = dfk[['g1treadss', 'g1wordskillss', 'g1tmathss', 'g1readbsraw', 'g1mathbsraw']].rank(
+            pct=True).mean(axis=1)
+
+        # Fill na
+        features_list = ['freelunch', 'white', 'age_in_1985', 'girl', 'teacher_white', 'gktyears', 'teacher_master',
+                         'teacher_girl']
+        numeric_features = ['age_in_1985', 'gktyears']
+        categorical_features = [f for f in features_list if f not in numeric_features]
+        dfk_features_imputed = dfk[features_list].copy()
+        for feature in numeric_features:
+            dfk_features_imputed[feature] = impute_numeric_column(dfk_features_imputed[feature])
+        for feature in categorical_features:
+            dfk_features_imputed[feature] = dfk_features_imputed[feature].fillna(
+                dfk_features_imputed[feature].mode()[0])
+
+        df_adjusted = pd.DataFrame(data={
+            'x': dfk_features_imputed[features_list].values.tolist(),
+            't': dfk.t.values.tolist(),
+            'D_obs': dfk.D.values.tolist(),
+            'Y_obs': dfk.avg_percentile.values.tolist(),
+        })
+
     return df_adjusted
 
 
