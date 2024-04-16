@@ -139,6 +139,14 @@ def data_adjustments(dataset: str) -> pd.DataFrame:
     elif dataset == 'STAR':
         df, meta = pyreadstat.read_sav('STAR_Students.sav')
         dfk = df.loc[(df.FLAGSGK == 1)].copy()
+        relevant_grades_list = ['g1treadss', 'g1wordskillss', 'g1tmathss', 'g1readbsraw', 'g1mathbsraw']
+
+        # remove students that changed arm or have missing grades
+        starg1_changed_from_small = (dfk.FLAGSG1 == 1) & (dfk.gkclasstype == 1.0) & (dfk.g1classtype != 1)
+        starg1_changed_from_regular = (dfk.FLAGSG1 == 1) & (dfk.gkclasstype != 1.0) & (dfk.g1classtype == 1.0)
+        starg1_no_grades = ((dfk.FLAGSG1 == 1) & dfk[relevant_grades_list].isnull().all(axis=1))
+        dfk = dfk.loc[~(starg1_changed_from_small | starg1_changed_from_regular | starg1_no_grades)]
+
         dfk['freelunch'] = dfk['gkfreelunch'].apply(lambda x: 1 if x == 1.0 else (0 if not pd.isnull(x) else x))
         dfk['white'] = dfk['race'].apply(lambda x: 1 if x == 1.0 else (
             0 if not pd.isnull(x) else x))  # dfk.race.value_counts(dropna=False) <- 4234 white, 2058 black, 33 other
@@ -152,11 +160,10 @@ def data_adjustments(dataset: str) -> pd.DataFrame:
 
         dfk['t'] = dfk['gkclasstype'].apply(lambda x: 1 if x == 1.0 else (0 if not pd.isnull(x) else x))
 
-        dfk['D'] = (dfk.FLAGSG1 == 0) | dfk[
-            ['g1treadss', 'g1wordskillss', 'g1tmathss', 'g1readbsraw', 'g1mathbsraw']].isnull().all(axis=1).astype(int)
+        dfk['D'] = (dfk.FLAGSG1 == 0) | dfk[relevant_grades_list].isnull().all(axis=1).astype(int)
+        # if we removed studets with missing grades, then dfk.FLAGSG1 == 0 is enough.
 
-        dfk['avg_percentile'] = dfk[['g1treadss', 'g1wordskillss', 'g1tmathss', 'g1readbsraw', 'g1mathbsraw']].rank(
-            pct=True).mean(axis=1)
+        dfk['avg_percentile'] = dfk[relevant_grades_list].rank(pct=True).mean(axis=1)
 
         # Fill na
         features_list = ['freelunch', 'white', 'age_in_1985', 'girl', 'teacher_white', 'gktyears', 'teacher_master',
