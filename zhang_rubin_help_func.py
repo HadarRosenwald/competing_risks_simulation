@@ -160,6 +160,28 @@ def plot_zhang_rubin_bounds_on_survivors(df: pd.DataFrame, zhang_rubin_bounds: L
     return {'x':df.x, 'lb': lb, 'up': up, 'true value': mu_y_1_x - mu_y_0_x if 'stratum' in df.columns else None}
 
 
+def plot_zhang_rubin_bounds_no_x(zr_bounds):
+    bounds_for_plot = pd.DataFrame({'lb': zr_bounds['lb'], 'up': zr_bounds['up']})
+    bounds_for_plot.sort_values(by='up', inplace=True)
+    bounds_for_plot.reset_index(inplace=True)
+
+    # what is the percentage of rows in bounds_for_plot that have positive/negative bounds?
+    positive_bounds_cont = bounds_for_plot[(bounds_for_plot.lb > 0) & (bounds_for_plot.up > 0)].shape[0]
+    negative_bounds_cont = bounds_for_plot[(bounds_for_plot.lb < 0) & (bounds_for_plot.up < 0)].shape[0]
+    print(
+        f"{positive_bounds_cont} positive bounds ({round(100 * positive_bounds_cont / bounds_for_plot.shape[0], 3)}%)")
+    print(
+        f"{negative_bounds_cont} negative bounds ({round(100 * negative_bounds_cont / bounds_for_plot.shape[0], 3)}%)")
+
+    plt.scatter(list(bounds_for_plot.index), list(bounds_for_plot.lb), label="Lower bound", s=0.1)
+    plt.scatter(list(bounds_for_plot.index), list(bounds_for_plot.up), label="Upper bound", s=0.1)
+    plt.legend(markerscale=12)
+    plt.title("Bounding Y1-Y0|AS by Zhang and Rubin")
+    plt.xlabel('X')
+    plt.ylabel('Y1-Y0|AS bounds')
+    plt.ylim((min(-3, min(list(bounds_for_plot.lb))), max(3, max(list(bounds_for_plot.up)))))
+    plt.show()
+
 ################# zhang and rubin parametric bounds ########################
 def calculate_integral(func, lb_integration: float, ub_integration: float):
     if lb_integration==ub_integration:
