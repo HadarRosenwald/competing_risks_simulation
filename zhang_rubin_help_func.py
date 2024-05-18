@@ -134,6 +134,7 @@ def plot_pi_h_and_bounds(pi_h: List[float], zhang_rubin_lb: List[float], zhang_r
 
 
 def plot_zhang_rubin_bounds_on_survivors(df: pd.DataFrame, zhang_rubin_bounds: List[Tuple[float, float]],
+                                         plot_graph_margin: bool = False,
                                          y0_dist_param: Dict[str, float] = y0_dist_param_default,
                                          y1_dist_param: Dict[str, float] = y1_dist_param_default):
     if 'stratum' in df.columns:
@@ -155,12 +156,13 @@ def plot_zhang_rubin_bounds_on_survivors(df: pd.DataFrame, zhang_rubin_bounds: L
     plt.title("Bounding Y1-Y0|AS by Zhang and Rubin")
     plt.xlabel('X')
     plt.ylabel('Y1-Y0|AS bounds')
-    plt.ylim((min(-3, min(lb)), max(3, max(up))))
+    if plot_graph_margin:
+        plt.ylim((min(-3, min(lb)), max(3, max(up))))
     plt.show()
     return {'x':df.x, 'lb': lb, 'up': up, 'true value': mu_y_1_x - mu_y_0_x if 'stratum' in df.columns else None}
 
 
-def plot_zhang_rubin_bounds_no_x(zr_bounds):
+def plot_zhang_rubin_bounds_no_x(zr_bounds, plot_graph_margin: bool = False):
     bounds_for_plot = pd.DataFrame({'lb': zr_bounds['lb'], 'up': zr_bounds['up']})
     bounds_for_plot.sort_values(by='up', inplace=True)
     bounds_for_plot.reset_index(inplace=True)
@@ -179,7 +181,8 @@ def plot_zhang_rubin_bounds_no_x(zr_bounds):
     plt.title("Bounding Y1-Y0|AS by Zhang and Rubin")
     plt.xlabel('X')
     plt.ylabel('Y1-Y0|AS bounds')
-    plt.ylim((min(-3, min(list(bounds_for_plot.lb))), max(3, max(list(bounds_for_plot.up)))))
+    if plot_graph_margin:
+        plt.ylim((min(-3, min(list(bounds_for_plot.lb))), max(3, max(list(bounds_for_plot.up)))))
     plt.show()
 
 ################# zhang and rubin parametric bounds ########################
