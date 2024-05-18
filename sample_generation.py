@@ -189,7 +189,7 @@ def data_adjustments(dataset: str) -> pd.DataFrame:
 
 
 def simulate_counterfactual_D(df_arm, counter_clf, beta_d, beta_y):
-    # simulate D0 with X, D1, Y1 and vise versa
+    # simulate D0 with X, D1, Y1*D1 and vise versa
     att = np.hstack([np.ones(shape=(df_arm.shape[0], 1)),
                      np.vstack(df_arm.x),
                      df_arm[['D_obs', 'Y_obs']].fillna(0).to_numpy()])
@@ -210,8 +210,8 @@ def simulate_counterfactual_Y(df_arm, counter_rl, beta_d, beta_y, col):
                            counter_rl.coef_.ravel(),
                            [beta_d, beta_y]))
     logits = np.dot(att, beta).astype(float)
-    D_prob = 1 / (1 + np.exp(-logits))
-    return D_prob
+    Y_cf = 1 / (1 + np.exp(-logits))
+    return Y_cf
 
 
 def simulate_counterfactuals(df):
