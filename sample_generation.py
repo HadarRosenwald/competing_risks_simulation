@@ -189,49 +189,63 @@ def data_adjustments(dataset: str) -> pd.DataFrame:
     return df_adjusted
 
 
-def simulate_counterfactual_D(df_arm, counter_clf, beta_d, beta_y):
-    # simulate D0 with X, D1, Y1*D1 and vise versa
-    att = np.hstack([np.ones(shape=(df_arm.shape[0], 1)),
-                     np.vstack(df_arm.x),
-                     df_arm[['D_obs', 'Y_obs']].fillna(0).to_numpy()])
-    beta = np.concatenate(([counter_clf.intercept_[0]],
-                           counter_clf.coef_.ravel(),
-                           [beta_d, beta_y]))
+def simulate_counterfactual_D(df_arm, counter_clf, beta_d, beta_y, beta_u, use_latent):
+    if use_latent:  # simulate D0 with X and U
+        att = np.hstack([np.ones(shape=(df_arm.shape[0], 1)),
+                         np.vstack(df_arm.x),
+                         df_arm[['u']].to_numpy()])
+        beta = np.concatenate(([counter_clf.intercept_[0]],
+                               counter_clf.coef_.ravel(),
+                               [beta_u]))
+    else:  # simulate D0 with X, D1, Y1*D1 and vise versa
+        att = np.hstack([np.ones(shape=(df_arm.shape[0], 1)),
+                         np.vstack(df_arm.x),
+                         df_arm[['D_obs', 'Y_obs']].fillna(0).to_numpy()])
+        beta = np.concatenate(([counter_clf.intercept_[0]],
+                               counter_clf.coef_.ravel(),
+                               [beta_d, beta_y]))
     logits = np.dot(att, beta).astype(float)
     D_prob = 1 / (1 + np.exp(-logits))
     cf_D = BernoulliDist(n=len(D_prob), param={'p': D_prob}).sampled_vector
     return cf_D
 
-def simulate_counterfactual_Y(df_arm, counter_rl, beta_d, beta_y, col):
-    # simulate Y0 with X, D0, D1, Y1*D1 and vise versa
+def simulate_counterfactual_Y(df_arm, counter_rl, beta_d, beta_y, beta_u, col, use_latent):
     att = np.hstack([np.ones(shape=(df_arm.shape[0], 1)),
                      np.vstack(df_arm.x),
                      df_arm[col].fillna(0).to_numpy()])
-    beta = np.concatenate(([counter_rl.intercept_],
-                           counter_rl.coef_.ravel(),
-                           [beta_d, beta_y]))
+    if use_latent:  # simulate Y0 with X, D_obs and U
+        beta = np.concatenate(([counter_rl.intercept_],
+                               counter_rl.coef_.ravel(),
+                               [beta_u]))
+    else:  # simulate Y0 with X, D0, D1, Y1*D1 and vise versa
+        beta = np.concatenate(([counter_rl.intercept_],
+                               counter_rl.coef_.ravel(),
+                               [beta_d, beta_y]))
     logits = np.dot(att, beta).astype(float)
     Y_cf = 1 / (1 + np.exp(-logits))
     return Y_cf
 
 
-def simulate_counterfactuals(df, beta_d=1.0, beta_y=1.0):
+def simulate_counterfactuals(df, beta_d=1.0, beta_y=1.0, beta_u=1.0, use_latent=True):
     # simulating D0 for those with t=1
 
     treatment_df = df[df.t == 1].copy()
     control_df = df[df.t == 0].copy()
 
+    treatment_df['u'] = treatment_df.index.to_series().apply(lambda idx: np.random.RandomState(idx).normal())
+    control_df['u'] = control_df.index.to_series().apply(lambda idx: np.random.RandomState(idx).normal())
+
     control_clf = LogisticRegression(random_state=0).fit(np.vstack(control_df.x), control_df.D_obs.to_numpy())
     treatment_clf = LogisticRegression(random_state=0).fit(np.vstack(treatment_df.x), treatment_df.D_obs.to_numpy())
 
-    # simulate D0 with X, D1, Y1 and vise versa.
-    # The betas for X is driven from the classifiers, the betas for D and Y are set as input.
+    # The betas for X is driven from the classifiers, the betas for U / D and Y are set as input.
+
     treatment_df['D1'] = treatment_df['D_obs'].astype(int)
-    treatment_df['D0'] = simulate_counterfactual_D(treatment_df, control_clf, beta_d, beta_y)
+    treatment_df['D0'] = simulate_counterfactual_D(treatment_df, control_clf, beta_d, beta_y, beta_u, use_latent)
     treatment_df['stratum'] = treatment_df.apply(lambda row: get_strata(d0=row['D0'], d1=row['D1']), axis=1)
 
     control_df['D0'] = control_df['D_obs'].astype(int)
-    control_df['D1'] = simulate_counterfactual_D(control_df, treatment_clf, beta_d, beta_y)
+    control_df['D1'] = simulate_counterfactual_D(control_df, treatment_clf, beta_d, beta_y, beta_u, use_latent)
     control_df['stratum'] = control_df.apply(lambda row: get_strata(d0=row['D0'], d1=row['D1']), axis=1)
 
     df_cf = pd.concat([control_df, treatment_df])
@@ -240,18 +254,24 @@ def simulate_counterfactuals(df, beta_d=1.0, beta_y=1.0):
     print(strata_info)
 
     control_df_s = control_df[control_df.D0 == 0]
-    rl_att = np.hstack((np.vstack(control_df_s.x), control_df_s.D1.values.reshape(-1, 1)))
-    control_lr = LinearRegression().fit(rl_att, control_df_s.Y_obs.to_numpy())
     treatment_df_s = treatment_df[treatment_df.D1 == 0]
-    rl_att = np.hstack((np.vstack(treatment_df_s.x), treatment_df_s.D0.values.reshape(-1, 1)))
-    treatment_lr = LinearRegression().fit(rl_att, treatment_df_s.Y_obs.to_numpy())
+    if use_latent:
+        rl_att = np.hstack((np.vstack(control_df.x), control_df.D_obs.values.reshape(-1, 1)))
+        control_lr = LinearRegression().fit(rl_att, control_df.Y_obs.fillna(0))
+        rl_att = np.hstack((np.vstack(treatment_df.x), treatment_df.D_obs.values.reshape(-1, 1)))
+        treatment_lr = LinearRegression().fit(rl_att, treatment_df.Y_obs.fillna(0))
+    else:
+        rl_att = np.hstack((np.vstack(control_df_s.x), control_df_s.D1.values.reshape(-1, 1)))
+        control_lr = LinearRegression().fit(rl_att, control_df_s.Y_obs.to_numpy())
+        rl_att = np.hstack((np.vstack(treatment_df_s.x), treatment_df_s.D0.values.reshape(-1, 1)))
+        treatment_lr = LinearRegression().fit(rl_att, treatment_df_s.Y_obs.to_numpy())
 
     treatment_df['Y1'] = treatment_df['Y_obs']
-    treatment_df['Y0'] = simulate_counterfactual_Y(treatment_df, control_lr, beta_d, beta_y, ['D1', 'D0', 'Y1'])
+    treatment_df['Y0'] = simulate_counterfactual_Y(treatment_df, control_lr, beta_d, beta_y, beta_u, ['D_obs', 'u'] if use_latent else ['D1', 'D0', 'Y1'], use_latent)
     treatment_df.loc[treatment_df['D0'] == 1, 'Y0'] = None
 
     control_df['Y0'] = control_df['Y_obs']
-    control_df['Y1'] = simulate_counterfactual_Y(control_df, treatment_lr, beta_d, beta_y, ['D0', 'D1', 'Y0'])
+    control_df['Y1'] = simulate_counterfactual_Y(control_df, treatment_lr, beta_d, beta_y, beta_u, ['D_obs', 'u'] if use_latent else ['D0', 'D1', 'Y0'], use_latent)
     control_df.loc[control_df['D1'] == 1, 'Y1'] = None
 
     df_cf = pd.concat([control_df, treatment_df])
