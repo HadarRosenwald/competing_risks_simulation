@@ -74,9 +74,8 @@ def policy_treat_by_composite_outcome(df: pd.DataFrame):
     return df.pi_co_Y_value.mean(), 1-df.pi_co_D_value.sum()/df.pi_co_D_value.count(), df_as.pi_co_Y_value.mean()
 
 
-def policy_treat_by_zr_bounds(df, lb, ub):
-    lb_threshold = -0.3
-    ub_threshold = 0.3
+def policy_treat_by_zr_bounds(df, lb, ub, lb_threshold=-0.2):
+    # ub_threshold = 0.3
 
     df['pi_zr'] = df['pi_cate_Y']  # naive approach, for the 'deferred'
     df.loc[df.D_obs == 0, 'pi_zr'] = [int(lb_x > lb_threshold) for lb_x in lb]

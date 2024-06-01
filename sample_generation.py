@@ -4,6 +4,7 @@ from typing import List, Tuple
 import pandas as pd
 from consts import *
 from distributions import *
+from policy import policy_treat_by_zr_bounds, policy_treat_by_ignoring_trunc
 from strata import Strata, get_strata
 import pyreadstat
 from scipy.stats import skew
@@ -214,10 +215,8 @@ def simulate_counterfactual_Y(df_arm, counter_rl, beta_d, beta_y, col):
     return Y_cf
 
 
-def simulate_counterfactuals(df):
+def simulate_counterfactuals(df, beta_d=1.0, beta_y=1.0):
     # simulating D0 for those with t=1
-    beta_d = 0.9
-    beta_y = 1
 
     treatment_df = df[df.t == 1].copy()
     control_df = df[df.t == 0].copy()
