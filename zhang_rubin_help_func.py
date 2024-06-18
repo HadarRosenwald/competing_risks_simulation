@@ -162,7 +162,7 @@ def plot_zhang_rubin_bounds_on_survivors(df: pd.DataFrame, zhang_rubin_bounds: L
     return {'x':df.x, 'lb': lb, 'up': up, 'true value': mu_y_1_x - mu_y_0_x if 'stratum' in df.columns else None}
 
 
-def plot_zhang_rubin_bounds_no_x(zr_bounds, plot_graph_margin: bool = False):
+def plot_zhang_rubin_bounds_no_x(zr_bounds, plot_graph_margin: bool = False, margin=3):
     bounds_for_plot = pd.DataFrame({'lb': zr_bounds['lb'], 'up': zr_bounds['up']})
     bounds_for_plot.sort_values(by='up', inplace=True)
     bounds_for_plot.reset_index(inplace=True)
@@ -182,7 +182,7 @@ def plot_zhang_rubin_bounds_no_x(zr_bounds, plot_graph_margin: bool = False):
     plt.xlabel('X')
     plt.ylabel('Y1-Y0|AS bounds')
     if plot_graph_margin:
-        plt.ylim((min(-3, min(list(bounds_for_plot.lb))), max(3, max(list(bounds_for_plot.up)))))
+        plt.ylim((min(-margin, min(list(bounds_for_plot.lb))), max(margin, max(list(bounds_for_plot.up)))))
     plt.show()
 
 ################# zhang and rubin parametric bounds ########################
