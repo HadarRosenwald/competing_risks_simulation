@@ -226,7 +226,9 @@ def simulate_counterfactual_Y(df_arm, counter_rl, beta_d, beta_y, beta_u, col, u
     return Y_cf
 
 
-def simulate_counterfactuals(df, beta_d=1.0, beta_y=1.0, beta_u=1.0, use_latent=True):
+def simulate_counterfactuals(df, beta_d=1.0, beta_y=1.0, beta_u=1.0, use_latent=True,
+                             random_seed=default_random_seed):
+    random.seed(random_seed)
     # simulating D0 for those with t=1
 
     treatment_df = df[df.t == 1].copy()
