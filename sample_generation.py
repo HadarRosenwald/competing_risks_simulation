@@ -9,6 +9,7 @@ from strata import Strata, get_strata
 import pyreadstat
 from scipy.stats import skew
 from sklearn.linear_model import LogisticRegression, LinearRegression
+from sklearn.metrics import pairwise_distances
 
 def generate_y(mu: List[float], strata: List[Strata], y_dist_param: Dict[str, float], t: int)-> List[Union[float, None]]:
     y = []
@@ -225,10 +226,34 @@ def simulate_counterfactual_Y(df_arm, counter_rl, beta_d, beta_y, beta_u, col, u
     Y_cf = 1 / (1 + np.exp(-logits))
     return Y_cf
 
+def simulate_counterfactual_y_under_ras(df, y_column, frail_stratum, num_close_rows=3):
+    """
+    If RAS does not hold, starting from the AS with the lowest Y, we find the most similar frail samples and take
+    the maximum Y among them. We repeat this process until RAS holds.
+    """
+    avg_y_frail = df[df['stratum'] == frail_stratum][y_column].mean()
+    avg_y_as = df[df['stratum'] == Strata.AS][y_column].mean()
+    if avg_y_as < avg_y_frail:
+        x_df = pd.DataFrame(df['x'].tolist())
+        sorted_as_df = df[df['stratum'] == Strata.AS].sort_values(by=y_column)
+        for index, row in sorted_as_df.iterrows():
+            if avg_y_as >= avg_y_frail:
+                break
+            frail_mask = df['stratum'] == frail_stratum
+            x_df_frail = x_df[frail_mask.values]
+            dists = pairwise_distances([x_df.iloc[index]], x_df_frail)
+            closest_indices = dists.argsort()[0][:num_close_rows]
+            closest_frail_rows = df[frail_mask].iloc[closest_indices]
+            max_y_frail = closest_frail_rows[y_column].max()
+            df.at[index, y_column] = max(df.at[index, y_column], max_y_frail)
+            avg_y_as = df[df['stratum'] == Strata.AS][y_column].mean()
+    return df
 
-def simulate_counterfactuals(df, beta_d=1.0, beta_y=1.0, beta_u=1.0, use_latent=True,
+
+def simulate_counterfactuals(df, beta_d=1.0, beta_y=1.0, beta_u=1.0, use_latent=True, mono=False, ras=False,
                              random_seed=default_random_seed):
     random.seed(random_seed)
+
     # simulating D0 for those with t=1
 
     treatment_df = df[df.t == 1].copy()
@@ -244,10 +269,14 @@ def simulate_counterfactuals(df, beta_d=1.0, beta_y=1.0, beta_u=1.0, use_latent=
 
     treatment_df['D1'] = treatment_df['D_obs'].astype(int)
     treatment_df['D0'] = simulate_counterfactual_D(treatment_df, control_clf, beta_d, beta_y, beta_u, use_latent)
+    if mono:
+        treatment_df.loc[treatment_df['D1'] == 1, 'D0'] = 1
     treatment_df['stratum'] = treatment_df.apply(lambda row: get_strata(d0=row['D0'], d1=row['D1']), axis=1)
 
     control_df['D0'] = control_df['D_obs'].astype(int)
     control_df['D1'] = simulate_counterfactual_D(control_df, treatment_clf, beta_d, beta_y, beta_u, use_latent)
+    if mono:
+        control_df.loc[control_df['D0'] == 0, 'D1'] = 0
     control_df['stratum'] = control_df.apply(lambda row: get_strata(d0=row['D0'], d1=row['D1']), axis=1)
 
     df_cf = pd.concat([control_df, treatment_df])
@@ -271,10 +300,15 @@ def simulate_counterfactuals(df, beta_d=1.0, beta_y=1.0, beta_u=1.0, use_latent=
     treatment_df['Y1'] = treatment_df['Y_obs']
     treatment_df['Y0'] = simulate_counterfactual_Y(treatment_df, control_lr, beta_d, beta_y, beta_u, ['D_obs', 'u'] if use_latent else ['D1', 'D0', 'Y1'], use_latent)
     treatment_df.loc[treatment_df['D0'] == 1, 'Y0'] = None
+    if ras:
+        simulate_counterfactual_y_under_ras(treatment_df, 'Y0', Strata.H)
+
 
     control_df['Y0'] = control_df['Y_obs']
     control_df['Y1'] = simulate_counterfactual_Y(control_df, treatment_lr, beta_d, beta_y, beta_u, ['D_obs', 'u'] if use_latent else ['D0', 'D1', 'Y0'], use_latent)
     control_df.loc[control_df['D1'] == 1, 'Y1'] = None
+    if ras:
+        simulate_counterfactual_y_under_ras(control_df, 'Y1', Strata.P)
 
     df_cf = pd.concat([control_df, treatment_df])
     df_cf['mu0'] = df_cf['Y0'].mean()
