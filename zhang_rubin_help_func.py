@@ -343,8 +343,9 @@ def x_reshape(x, n_features):
 
 
 def calc_zhang_rubin_bounds_using_cvar_est(df: pd.DataFrame, pi_h_len_grid_search: int = 5,
-                                           monotonicity_assumption: bool = False, ras_assumption: bool = False) -> \
-                                           Tuple[np.array, np.array]:
+                                           monotonicity_assumption: bool = False, ras_assumption: bool = False,
+                                           return_pi_h_x: bool = False) -> \
+                                           Tuple[np.array, np.array, np.array, np.array] | Tuple[np.array, np.array]:
     # TODO re-considerate our train and predict data set. Currently only survivors. Is that the right way?
 
     df_survivors = df.loc[(df.D_obs==0)].copy()
@@ -424,7 +425,11 @@ def calc_zhang_rubin_bounds_using_cvar_est(df: pd.DataFrame, pi_h_len_grid_searc
 
     zhang_rubin_lb = zhang_rubin_lb_results.min(axis=0)
     zhang_rubin_ub = zhang_rubin_ub_results.max(axis=0)
+    zhang_rubin_lb_pi_h = pi_h_grid_search_per_x[np.arange(pi_h_grid_search_per_x.shape[0]), zhang_rubin_lb_results.argmin(axis=0)]
+    zhang_rubin_ub_pi_h = pi_h_grid_search_per_x[np.arange(pi_h_grid_search_per_x.shape[0]), zhang_rubin_ub_results.argmax(axis=0)]
 
+    if return_pi_h_x:
+        return zhang_rubin_lb, zhang_rubin_ub, zhang_rubin_lb_pi_h, zhang_rubin_ub_pi_h
     return (zhang_rubin_lb, zhang_rubin_ub)
 
 

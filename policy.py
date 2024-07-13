@@ -85,3 +85,31 @@ def policy_treat_by_zr_bounds(df, lb, ub, lb_threshold=0.1):
     df_as = df.loc[df.stratum == Strata.AS].copy()
 
     return df.pi_zr_Y_value.mean(), 1-df.pi_zr_D_value.sum()/df.pi_zr_D_value.count(), df_as.pi_zr_Y_value.mean()
+
+def policy_treat_by_zr_dnh(df, lb_pi_h, up_pi_h, lb_pi_h_threshold=0.1):
+    df['pi_zr_dnh'] = df['pi_zr']
+    df.loc[df.D_obs == 0, 'pi_zr_dnh'] = [int(lb_pi_h_x <= lb_pi_h_threshold) for lb_pi_h_x in lb_pi_h]
+    df['pi_zr_dnh_Y_value'] = np.where(df['pi_zr_dnh'] == 1, df['Y1'], df['Y0'])
+    df['pi_zr_dnh_D_value'] = np.where(df['pi_zr_dnh'] == 1, df['D1'], df['D0'])
+
+    df_as = df.loc[df.stratum == Strata.AS].copy()
+
+    return df.pi_zr_dnh_Y_value.mean(), 1-df.pi_zr_dnh_D_value.sum()/df.pi_zr_dnh_D_value.count(), df_as.pi_zr_dnh_Y_value.mean()
+
+    # threshold_grid_search = np.linspace(lb_pi_h.min(), lb_pi_h.max(), num=10)
+    # best_survival = 0
+    # for threshold in threshold_grid_search:
+    #     df['pi_zr_dnh'] = df['pi_zr']
+    #     df.loc[df.D_obs == 0, 'pi_zr_dnh'] = [int(lb_pi_h_x <= lb_pi_h_threshold) for lb_pi_h_x in lb_pi_h]
+    #     df['pi_zr_dnh_Y_value'] = np.where(df['pi_zr_dnh'] == 1, df['Y1'], df['Y0'])
+    #     df['pi_zr_dnh_D_value'] = np.where(df['pi_zr_dnh'] == 1, df['D1'], df['D0'])
+    #
+    #     df_as = df.loc[df.stratum == Strata.AS].copy()
+    #     if 1-df.pi_zr_dnh_D_value.sum()/df.pi_zr_dnh_D_value.count() > best_survival:
+    #         best_survival = 1-df.pi_zr_dnh_D_value.sum()/df.pi_zr_dnh_D_value.count()
+    #         best_threshold = threshold
+    #
+    #     print(best_threshold)
+    #     print(best_survival)
+    #
+    #     return df.pi_zr_dnh_Y_value.mean(), 1-df.pi_zr_dnh_D_value.sum()/df.pi_zr_dnh_D_value.count(), df_as.pi_zr_dnh_Y_value.mean()
