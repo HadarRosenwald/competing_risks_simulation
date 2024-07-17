@@ -2,15 +2,16 @@ import pandas as pd
 import numpy as np
 from sklearn.linear_model import LogisticRegression, LinearRegression
 from sklearn.ensemble import RandomForestRegressor
+from xgboost import XGBClassifier
 
 from strata import Strata
 
 
 def policy_treat_by_D_cate(df: pd.DataFrame):
-    cate_D_threshold = 0.011
+    cate_D_threshold = 0.55
     features = pd.DataFrame(df.x.tolist(), columns=[f'x{i}' for i in range(len(df.x.iloc[0]))])
     features['t'] = df.t
-    model = LogisticRegression(random_state=0)
+    model = XGBClassifier(random_state=0, eval_metric='logloss')
     model.fit(features, df.D_obs)
 
     features['t'] = 1
@@ -74,10 +75,10 @@ def policy_treat_by_composite_outcome(df: pd.DataFrame):
     return df.pi_co_Y_value.mean(), 1-df.pi_co_D_value.sum()/df.pi_co_D_value.count(), df_as.pi_co_Y_value.mean()
 
 
-def policy_treat_by_zr_bounds(df, lb, ub, lb_threshold=0.1):
+def policy_treat_by_zr_bounds(df, lb, ub, lb_threshold=-0.25):
     # ub_threshold = 0.3
 
-    df['pi_zr'] = df['pi_cate_Y']  # naive approach, for the 'deferred'
+    df['pi_zr'] = df['pi_cate_D']  # minimize D for the 'deferred'
     df.loc[df.D_obs == 0, 'pi_zr'] = [int(lb_x > lb_threshold) for lb_x in lb]
     df['pi_zr_Y_value'] = np.where(df['pi_zr'] == 1, df['Y1'], df['Y0'])
     df['pi_zr_D_value'] = np.where(df['pi_zr'] == 1, df['D1'], df['D0'])
