@@ -341,8 +341,46 @@ def x_reshape(x, n_features):
     # X should be of shape (n_samples, n_features). If X is a scalar -> #2 dimension set to be 1
     return np.stack(x.values) if n_features > 1 else np.array(x).reshape(-1, 1)
 
+def train_superquantile_model(df: pd.DataFrame) -> tuple[KernelSuperquantileRegressor, KernelSuperquantileRegressor]:
+    df_survivors = df.loc[(df.D_obs==0)].copy()
+    n_features = np.size(df.x[0])
 
-def calc_zhang_rubin_bounds_using_cvar_est(df: pd.DataFrame, pi_h_len_grid_search: int = 5,
+    # Y_obs_1
+    superquantile_model = KernelSuperquantileRegressor(
+        kernel=RFKernel(
+            RandomForestRegressor(
+                n_estimators=n_estimators,
+                max_depth=max_depth,
+                max_features=n_features,
+                min_samples_leaf=min_samples_leaf,
+                n_jobs=-2)
+        ))
+    df_obs_1 = df_survivors.loc[(df_survivors.t == 1)].copy()
+    X = x_reshape(df_obs_1.x, n_features)
+    Y = np.array(df_obs_1.Y_obs)
+    trained_superquantile_model_treated = superquantile_model.fit(X, Y)
+
+    # Y_obs_0
+    superquantile_model = KernelSuperquantileRegressor(
+        kernel=RFKernel(
+            RandomForestRegressor(
+                n_estimators=n_estimators,
+                max_depth=max_depth,
+                max_features=n_features,
+                min_samples_leaf=min_samples_leaf,
+                n_jobs=-2)
+        ))
+    df_obs_0 = df_survivors.loc[(df_survivors.t == 0)].copy()
+    X = x_reshape(df_obs_0.x, n_features)
+    Y = np.array(df_obs_0.Y_obs)
+    trained_superquantile_model_untreated = superquantile_model.fit(X, Y)
+
+    return trained_superquantile_model_treated, trained_superquantile_model_untreated
+
+def calc_zhang_rubin_bounds_using_cvar_est(df: pd.DataFrame,
+                                           trained_superquantile_model_treated: KernelSuperquantileRegressor,
+                                           trained_superquantile_model_untreated: KernelSuperquantileRegressor,
+                                           pi_h_len_grid_search: int = 5,
                                            monotonicity_assumption: bool = False, ras_assumption: bool = False) -> \
                                            Tuple[np.array, np.array]:
     # TODO re-considerate our train and predict data set. Currently only survivors. Is that the right way?
@@ -360,23 +398,7 @@ def calc_zhang_rubin_bounds_using_cvar_est(df: pd.DataFrame, pi_h_len_grid_searc
     grid_search_ub_scnd_argmt_per_x = list()
 
 
-    superquantile_model = KernelSuperquantileRegressor(
-        kernel=RFKernel(
-            RandomForestRegressor(
-                n_estimators=n_estimators,
-                max_depth=max_depth,
-                max_features=n_features,
-                min_samples_leaf=min_samples_leaf,
-                n_jobs=-2)
-        ))
-
     # Y_obs_1
-    df_obs_1 = df_survivors.loc[(df.t == 1)].copy()
-    X = x_reshape(df_obs_1.x, n_features)
-    Y = np.array(df_obs_1.Y_obs)
-
-    trained_superquantile_model = superquantile_model.fit(X, Y)
-
     for pi_h in pi_h_grid_search_per_x.T:
         if ras_assumption:
             X_tau = np.ones(len(pi_h))
@@ -384,7 +406,7 @@ def calc_zhang_rubin_bounds_using_cvar_est(df: pd.DataFrame, pi_h_len_grid_searc
             X_tau = np.array(df_survivors.p_t0d0_x / df_survivors.p_t1d0_x)
         else:
             X_tau = np.array(df_survivors.p_t0d0_x / df_survivors.p_t1d0_x - pi_h / df_survivors.p_t1d0_x)
-        lb_frst_argmt_per_x = trained_superquantile_model.predict(x_reshape(df_survivors.x, n_features), X_tau, tail='left')
+        lb_frst_argmt_per_x = trained_superquantile_model_treated.predict(x_reshape(df_survivors.x, n_features), X_tau, tail='left')
         grid_search_lb_frst_argmt_per_x.append(lb_frst_argmt_per_x)
 
     for pi_h in pi_h_grid_search_per_x.T:
@@ -392,22 +414,16 @@ def calc_zhang_rubin_bounds_using_cvar_est(df: pd.DataFrame, pi_h_len_grid_searc
             X_tau = 1 - np.array(df_survivors.p_t0d0_x / df_survivors.p_t1d0_x)
         else:
             X_tau = 1 - np.array(df_survivors.p_t0d0_x / df_survivors.p_t1d0_x) + np.array(pi_h / df_survivors.p_t1d0_x)
-        ub_frst_argmt_per_x = trained_superquantile_model.predict(x_reshape(df_survivors.x, n_features), X_tau, tail='right')
+        ub_frst_argmt_per_x = trained_superquantile_model_treated.predict(x_reshape(df_survivors.x, n_features), X_tau, tail='right')
         grid_search_ub_frst_argmt_per_x.append(ub_frst_argmt_per_x)
 
     # Y_obs_0
-    df_obs_0 = df_survivors.loc[(df.t == 0)].copy()
-    X = x_reshape(df_obs_0.x, n_features)
-    Y = np.array(df_obs_0.Y_obs)
-
-    trained_superquantile_model = superquantile_model.fit(X, Y)
-
     for pi_h in pi_h_grid_search_per_x.T:
         if monotonicity_assumption:
             X_tau = np.zeros(len(pi_h))
         else:
             X_tau = np.array(pi_h / df_survivors.p_t0d0_x)
-        lb_scnd_argmt_per_x = trained_superquantile_model.predict(x_reshape(df_survivors.x, n_features), X_tau, tail='right')
+        lb_scnd_argmt_per_x = trained_superquantile_model_untreated.predict(x_reshape(df_survivors.x, n_features), X_tau, tail='right')
         grid_search_lb_scnd_argmt_per_x.append(lb_scnd_argmt_per_x)
 
     for pi_h in pi_h_grid_search_per_x.T:
@@ -415,7 +431,7 @@ def calc_zhang_rubin_bounds_using_cvar_est(df: pd.DataFrame, pi_h_len_grid_searc
             X_tau = np.ones(len(pi_h))
         else:
             X_tau = 1 - np.array(pi_h / df_survivors.p_t0d0_x)
-        ub_scnd_argmt_per_x = trained_superquantile_model.predict(x_reshape(df_survivors.x, n_features), X_tau, tail='left')
+        ub_scnd_argmt_per_x = trained_superquantile_model_untreated.predict(x_reshape(df_survivors.x, n_features), X_tau, tail='left')
         grid_search_ub_scnd_argmt_per_x.append(ub_scnd_argmt_per_x)
 
 
