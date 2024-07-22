@@ -78,8 +78,8 @@ def policy_treat_by_composite_outcome(df: pd.DataFrame):
 def policy_treat_by_zr_bounds(df, lb, ub, lb_threshold=-0.25):
     # ub_threshold = 0.3
 
-    df['pi_zr'] = df['pi_cate_D']  # minimize D for the 'deferred'
-    df.loc[df.D_obs == 0, 'pi_zr'] = [int(lb_x > lb_threshold) for lb_x in lb]
+    df['zr_lb'] = lb
+    df['pi_zr'] = [int(lb_x > lb_threshold) for lb_x in lb]
     df['pi_zr_Y_value'] = np.where(df['pi_zr'] == 1, df['Y1'], df['Y0'])
     df['pi_zr_D_value'] = np.where(df['pi_zr'] == 1, df['D1'], df['D0'])
 
