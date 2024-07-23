@@ -134,35 +134,37 @@ def plot_pi_h_and_bounds(pi_h: List[float], zhang_rubin_lb: List[float], zhang_r
 
 
 def plot_zhang_rubin_bounds_on_survivors(df: pd.DataFrame, zhang_rubin_bounds: List[Tuple[float, float]],
+                                         title: str, y_title: str, plot_yi1_yi0_diff: bool = False,
                                          plot_graph_margin: bool = False,
                                          y0_dist_param: Dict[str, float] = y0_dist_param_default,
                                          y1_dist_param: Dict[str, float] = y1_dist_param_default):
     if 'stratum' in df.columns:
-        df_plot_as = df.loc[df.stratum == Strata.AS.name]
-        plt.scatter(df_plot_as.x, (df_plot_as.Y1 - df_plot_as.Y0), label="True Y1 - Y0|AS", s=0.1)
+        df_as = df.loc[df.stratum == (Strata.AS.name if Strata.AS.name in df.stratum.values else Strata.AS)]
+        if plot_yi1_yi0_diff:
+            plt.scatter(df_as.x, (df_as.Y1 - df_as.Y0), label="True Y1 - Y0|AS", s=0.1)
 
-        mu_y_0_x = df.mu0
-        mu_y_1_x = df.mu1
+        mu_y_0_x_as = df_as.mu0
+        mu_y_1_x_as = df_as.mu1
 
     lb, up = zhang_rubin_bounds
-    # print(f"lower bound: {lb}, upper bound: {up}, true value: {mu_y_1_x - mu_y_0_x}")
+    # print(f"lower bound: {lb}, upper bound: {up}, true value: {mu_y_1_x_as - mu_y_0_x_as}")
     plt.scatter([np.mean(inner_list) for inner_list in df.x] if isinstance(df.x.iloc[0], list) else list(df.x), lb, label="Lower bound", s=0.1)
     plt.scatter([np.mean(inner_list) for inner_list in df.x] if isinstance(df.x.iloc[0], list) else list(df.x), up, label="Upper bound", s=0.1)
     if 'stratum' in df.columns:
-        plt.scatter([np.mean(inner_list) for inner_list in df.x] if isinstance(df.x.iloc[0], list) else list(df.x), mu_y_1_x - mu_y_0_x, label=r'$\mu_{y(1)|x}-\mu_{y(0)|x}$', s=0.1)
+        plt.scatter([np.mean(inner_list) for inner_list in df_as.x] if isinstance(df_as.x.iloc[0], list) else list(df_as.x), mu_y_1_x_as - mu_y_0_x_as, label=r'$\mu_{y(1)|X,AS}-\mu_{y(0)|X,AS}$', s=0.1)
 
     plt.legend(markerscale=12)
     # plt.legend()
-    plt.title("Bounding Y1-Y0|AS by Zhang and Rubin")
+    plt.title(title)
     plt.xlabel('X')
-    plt.ylabel('Y1-Y0|AS bounds')
+    plt.ylabel(y_title)
     if plot_graph_margin:
         plt.ylim((min(-3, min(lb)), max(3, max(up))))
     plt.show()
-    return {'x':df.x, 'lb': lb, 'up': up, 'true value': mu_y_1_x - mu_y_0_x if 'stratum' in df.columns else None}
+    return {'x':df.x, 'lb': lb, 'up': up, 'true value': mu_y_1_x_as - mu_y_0_x_as if 'stratum' in df.columns else None}
 
 
-def plot_zhang_rubin_bounds_no_x(zr_bounds, plot_graph_margin: bool = False, margin=3):
+def plot_zhang_rubin_bounds_no_x(zr_bounds, title, y_title, plot_graph_margin: bool = False, margin=3):
     bounds_for_plot = pd.DataFrame({'lb': zr_bounds['lb'], 'up': zr_bounds['up']})
     bounds_for_plot.sort_values(by='up', inplace=True)
     bounds_for_plot.reset_index(inplace=True)
@@ -178,9 +180,9 @@ def plot_zhang_rubin_bounds_no_x(zr_bounds, plot_graph_margin: bool = False, mar
     plt.scatter(list(bounds_for_plot.index), list(bounds_for_plot.lb), label="Lower bound", s=0.1)
     plt.scatter(list(bounds_for_plot.index), list(bounds_for_plot.up), label="Upper bound", s=0.1)
     plt.legend(markerscale=12)
-    plt.title("Bounding Y1-Y0|AS by Zhang and Rubin")
-    plt.xlabel('X')
-    plt.ylabel('Y1-Y0|AS bounds')
+    plt.title(title)
+    plt.xlabel('Samples')
+    plt.ylabel(y_title)
     if plot_graph_margin:
         plt.ylim((min(-margin, min(list(bounds_for_plot.lb))), max(margin, max(list(bounds_for_plot.up)))))
     plt.show()
