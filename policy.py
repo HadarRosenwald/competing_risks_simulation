@@ -7,8 +7,7 @@ from xgboost import XGBClassifier
 from strata import Strata
 
 
-def policy_treat_by_D_cate(df: pd.DataFrame):
-    cate_D_threshold = 0.55
+def policy_treat_by_D_cate(df: pd.DataFrame, cate_D_threshold: float = 0.55):
     features = pd.DataFrame(df.x.tolist(), columns=[f'x{i}' for i in range(len(df.x.iloc[0]))])
     features['t'] = df.t
     model = XGBClassifier(random_state=0, eval_metric='logloss')
