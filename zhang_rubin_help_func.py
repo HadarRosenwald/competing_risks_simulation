@@ -135,7 +135,7 @@ def plot_pi_h_and_bounds(pi_h: List[float], zhang_rubin_lb: List[float], zhang_r
 
 def plot_zhang_rubin_bounds_on_survivors(df: pd.DataFrame, zhang_rubin_bounds: List[Tuple[float, float]],
                                          title: str, y_title: str, plot_yi1_yi0_diff: bool = False,
-                                         plot_graph_margin: bool = False,
+                                         plot_graph_margin: bool = False, ylim_margin: int = 3,
                                          y0_dist_param: Dict[str, float] = y0_dist_param_default,
                                          y1_dist_param: Dict[str, float] = y1_dist_param_default):
     if 'stratum' in df.columns:
@@ -159,12 +159,14 @@ def plot_zhang_rubin_bounds_on_survivors(df: pd.DataFrame, zhang_rubin_bounds: L
     plt.xlabel('X')
     plt.ylabel(y_title)
     if plot_graph_margin:
-        plt.ylim((min(-3, min(lb)), max(3, max(up))))
+        plt.ylim((min(-ylim_margin, min(lb)), max(ylim_margin, max(up))))
+    plt.grid(False)
     plt.show()
     return {'x':df.x, 'lb': lb, 'up': up, 'true value': mu_y_1_x_as - mu_y_0_x_as if 'stratum' in df.columns else None}
 
 
-def plot_zhang_rubin_bounds_no_x(zr_bounds, title, y_title, plot_graph_margin: bool = False, margin=3):
+def plot_zhang_rubin_bounds_no_x(zr_bounds, title, y_title, plot_graph_margin: bool = False, margin=3,
+                                 plot_horizontal_zero=False):
     bounds_for_plot = pd.DataFrame({'lb': zr_bounds['lb'], 'up': zr_bounds['up']})
     bounds_for_plot.sort_values(by='up', inplace=True)
     bounds_for_plot.reset_index(inplace=True)
@@ -179,12 +181,15 @@ def plot_zhang_rubin_bounds_no_x(zr_bounds, title, y_title, plot_graph_margin: b
 
     plt.scatter(list(bounds_for_plot.index), list(bounds_for_plot.lb), label="Lower bound", s=0.1)
     plt.scatter(list(bounds_for_plot.index), list(bounds_for_plot.up), label="Upper bound", s=0.1)
+    if plot_horizontal_zero:
+        plt.axhline(y=0, color='grey', linestyle='--', linewidth=1)
     plt.legend(markerscale=12)
     plt.title(title)
     plt.xlabel('Samples')
     plt.ylabel(y_title)
     if plot_graph_margin:
         plt.ylim((min(-margin, min(list(bounds_for_plot.lb))), max(margin, max(list(bounds_for_plot.up)))))
+    plt.grid(False)
     plt.show()
 
 ################# zhang and rubin parametric bounds ########################
