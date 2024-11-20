@@ -10,6 +10,7 @@ import pyreadstat
 from scipy.stats import skew
 from sklearn.linear_model import LogisticRegression, LinearRegression
 from sklearn.metrics import pairwise_distances
+from xgboost import XGBClassifier
 
 def generate_y(mu: List[float], strata: List[Strata], y_dist_param: Dict[str, float], t: int)-> List[Union[float, None]]:
     y = []
@@ -255,6 +256,17 @@ def simulate_counterfactuals(df, beta_d=1.0, beta_y=1.0, beta_u=1.0, use_latent=
     random.seed(random_seed)
 
     # simulating D0 for those with t=1
+    features = pd.DataFrame(df.x.tolist(), columns=[f'x{i}' for i in range(len(df.x.iloc[0]))])
+    features['t'] = df.t
+    model = XGBClassifier(random_state=0, eval_metric='logloss')
+    model.fit(features, df.D_obs)
+    features_counterfactual = features.copy()
+    features_counterfactual['t'] = 1
+    df['D1'] = model.predict(features_counterfactual)
+    features_counterfactual['t'] = 0
+    df['D0'] = model.predict(features_counterfactual)
+    # df.loc[df.t == 1, 'D1'] = df.loc[df.t == 1, 'D_obs']
+    # df.loc[df.t == 0, 'D0'] = df.loc[df.t == 0, 'D_obs'] #TODO Just for debugging, remove the observed totally, and use the exact same model for policy. Then it *should* identify the harm and recommend no treatment
 
     treatment_df = df[df.t == 1].copy()
     control_df = df[df.t == 0].copy()
@@ -267,14 +279,14 @@ def simulate_counterfactuals(df, beta_d=1.0, beta_y=1.0, beta_u=1.0, use_latent=
 
     # The betas for X is driven from the classifiers, the betas for U / D and Y are set as input.
 
-    treatment_df['D1'] = treatment_df['D_obs'].astype(int)
-    treatment_df['D0'] = simulate_counterfactual_D(treatment_df, control_clf, beta_d, beta_y, beta_u, use_latent)
+    # treatment_df['D1'] = treatment_df['D_obs'].astype(int)
+    # treatment_df['D0'] = simulate_counterfactual_D(treatment_df, control_clf, beta_d, beta_y, beta_u, use_latent)
     if mono:
         treatment_df.loc[treatment_df['D1'] == 1, 'D0'] = 1
     treatment_df['stratum'] = treatment_df.apply(lambda row: get_strata(d0=row['D0'], d1=row['D1']), axis=1)
 
-    control_df['D0'] = control_df['D_obs'].astype(int)
-    control_df['D1'] = simulate_counterfactual_D(control_df, treatment_clf, beta_d, beta_y, beta_u, use_latent)
+    # control_df['D0'] = control_df['D_obs'].astype(int)
+    # control_df['D1'] = simulate_counterfactual_D(control_df, treatment_clf, beta_d, beta_y, beta_u, use_latent)
     if mono:
         control_df.loc[control_df['D0'] == 0, 'D1'] = 0
     control_df['stratum'] = control_df.apply(lambda row: get_strata(d0=row['D0'], d1=row['D1']), axis=1)
